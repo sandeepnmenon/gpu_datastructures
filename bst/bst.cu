@@ -278,9 +278,10 @@ int main()
     std::chrono::duration<double> duration = end - start;
     printf("Time taken to search %d keys: %f milliseconds\n", M, duration.count() * 1000);
 
-    // Batch search benchmark
     vector<int> tree_arr = bst.covertToArray();
     vector<char> results(search_keys.size(), false);
+
+    // Batch search benchmark
     start = chrono::high_resolution_clock::now();
     batchSearch(tree_arr, search_keys, results);
     end = chrono::high_resolution_clock::now();
