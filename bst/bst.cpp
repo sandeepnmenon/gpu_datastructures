@@ -3,21 +3,25 @@
 #include <chrono>
 #include <random>
 #include <vector>
+#include <queue>
+#include <climits>
 #include <numeric>
 #include <algorithm>
+#define NULL_VAL INT_MAX
 using namespace std;
 
 class BSTNode;
-using BSTNodePtr = unique_ptr<BSTNode>;
+using BSTNodePtr = BSTNode *;
 
 class BSTNode
 {
 public:
     int key;
-    unique_ptr<BSTNode> left;
-    unique_ptr<BSTNode> right;
+    int height;
+    BSTNodePtr left;
+    BSTNodePtr right;
 
-    BSTNode(int value) : key(value), left(nullptr), right(nullptr) {}
+    BSTNode(int value) : key(value), height(1), left(nullptr), right(nullptr) {}
 };
 
 class BST
@@ -25,15 +29,81 @@ class BST
 private:
     BSTNodePtr root;
 
+    int height(BSTNodePtr node)
+    {
+        return (node) ? node->height : 0;
+    }
+
+    int getBalance(BSTNodePtr &node)
+    {
+        return (node) ? height(node->left) - height(node->right) : 0;
+    }
+
+    BSTNodePtr rotateRight(BSTNodePtr y)
+    {
+        BSTNodePtr x = y->left;
+        BSTNodePtr T2 = x->right;
+
+        // Perform rotation
+        x->right = y;
+        y->left = T2;
+
+        // Update heights
+        y->height = max(height(y->left), height(y->right)) + 1;
+        x->height = max(height(x->left), height(x->right)) + 1;
+
+        return x;
+    }
+
+    BSTNodePtr rotateLeft(BSTNodePtr x)
+    {
+        BSTNodePtr y = x->right;
+        BSTNodePtr T2 = y->left;
+
+        // Perform rotation
+        y->left = x;
+        x->right = T2;
+
+        // Update heights
+        x->height = max(height(x->left), height(x->right)) + 1;
+        y->height = max(height(y->left), height(y->right)) + 1;
+
+        return y;
+    }
+
     BSTNodePtr insert(BSTNodePtr root, int key)
     {
-        if (root == nullptr)
-            return make_unique<BSTNode>(key);
+        if (!root)
+            return new BSTNode(key);
 
         if (key < root->key)
-            root->left = insert(move(root->left), key);
+            root->left = insert(root->left, key);
         else if (key > root->key)
-            root->right = insert(move(root->right), key);
+            root->right = insert(root->right, key);
+        else
+            return root; // Duplicate keys not allowed
+
+        root->height = max(height(root->left), height(root->right)) + 1;
+        int balance = getBalance(root);
+
+        // Left Left Case
+        if (balance > 1 && root->left && key < root->left->key)
+            return rotateRight(root);
+        // Right Right Case
+        if (balance < -1 && root->right && key > root->right->key)
+            return rotateLeft(root);
+        // Left Right Case
+        if (balance > 1 && root->left && key > root->left->key)
+        {
+            root->left = rotateLeft(root->left);
+            return rotateRight(root);
+        }
+        // Right Left Case
+        if (balance < -1 && root->right && key < root->right->key)
+        {
+            root->right = rotateRight(root->right);
+            return rotateLeft(root);
+        }
 
         return root;
     }
@@ -56,25 +126,61 @@ public:
 
     void insert(int key)
     {
-        root = insert(move(root), key);
+        root = insert(root, key);
     }
     bool search(int key)
     {
         return search(root, key);
+    }
+
+    vector<int> covertToArray()
+    {
+        vector<int> treeArray;
+        if (!root)
+            return treeArray;
+
+        queue<pair<BSTNodePtr, size_t>> nodeQueue;
+        nodeQueue.push({root, 0});
+        while (!nodeQueue.empty())
+        {
+            auto [node, index] = nodeQueue.front();
+            nodeQueue.pop();
+
+            size_t newSize = max(treeArray.size(), index + 1);
+            if (node->left)
+                newSize = max(newSize, 2 * index + 2);
+            if (node->right)
+                newSize = max(newSize, 2 * index + 3);
+
+            if (newSize > treeArray.size())
+                treeArray.resize(newSize, NULL_VAL);
+
+            // printf("New size: %lu ; Index: %lu ; Tree size: %lu\n", newSize, index, treeArray.size());
+            treeArray[index] = node->key;
+
+            if (node->left)
+                nodeQueue.push({node->left, 2 * index + 1});
+            if (node->right)
+                nodeQueue.push({node->right, 2 * index + 2});
+        }
+        return treeArray;
     }
 };
 
 int main()
 {
     BST bst;
-    const int N = 1e5;   // Number of nodes
+    const int N = 1e4;   // Number of nodes
     vector<int> data(N); // Keys to be inserted
     iota(data.begin(), data.end(), 0);
     unsigned seed = chrono::system_clock::now().time_since_epoch().count();
     shuffle(data.begin(), data.end(), default_random_engine(seed));
 
     for (int key : data)
+    {
+        printf("Inserting %d\n", key);
         bst.insert(key);
+    }
 
     // Search benchmark
     int M = 1e5; // Number of searches
@@ -89,4 +195,7 @@ int main()
     auto end = chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
     printf("Time taken to search %d keys: %f milliseconds\n", M, duration.count() * 1000);
+
+    // Convert to array
+    vector<int> treeArray = bst.covertToArray();
 }
