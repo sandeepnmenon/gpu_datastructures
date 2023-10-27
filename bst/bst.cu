@@ -286,4 +286,22 @@ int main()
     end = chrono::high_resolution_clock::now();
     duration = end - start;
     printf("Time taken to batch search %d keys: %f milliseconds\n", M, duration.count() * 1000);
+
+    // Thrust batch search benchmark
+    vector<bool> thrust_results(search_keys.size(), false);
+    start = chrono::high_resolution_clock::now();
+    batchSearch_thrust(tree_arr, search_keys, thrust_results);
+    end = chrono::high_resolution_clock::now();
+    duration = end - start;
+    printf("Time taken to thrust batch search %d keys: %f milliseconds\n", M, duration.count() * 1000);
+
+    // Check results
+    for (int i = 0; i < M; i++)
+    {
+        if (thrust_results[i] != bst.search(search_keys[i]))
+        {
+            printf("Error at index %d\n", i);
+            break;
+        }
+    }
 }
