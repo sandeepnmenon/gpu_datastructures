@@ -7,8 +7,38 @@
 #include <climits>
 #include <numeric>
 #include <algorithm>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 #define NULL_VAL INT_MAX
 using namespace std;
+
+__global__ void searchKernel(int *tree, int tree_size, int *keys, bool *results, int num_keys)
+{
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    if (index < num_keys)
+    {
+        int key = keys[index];
+        bool found = false;
+        int node_index = 0;
+        while (node_index < tree_size && tree[node_index] != INT_MAX)
+        {
+            if (tree[node_index] == key)
+            {
+                found = true;
+                break;
+            }
+            if (key < tree[node_index])
+            {
+                node_index = 2 * node_index + 1;
+            }
+            else
+            {
+                node_index = 2 * node_index + 2;
+            }
+        }
+        results[index] = found;
+    }
+}
 
 class BSTNode;
 using BSTNodePtr = BSTNode *;
@@ -167,6 +197,59 @@ public:
     }
 };
 
+void batchSearch_thrust(const std::vector<int> &tree_arr, const std::vector<int> &search_keys, std::vector<bool> &results)
+{
+    int num_keys = search_keys.size();
+
+    // Transfer data to device
+    thrust::device_vector<int> d_tree = tree_arr;
+    thrust::device_vector<int> d_keys = search_keys;
+    thrust::device_vector<bool> d_results(num_keys);
+
+    // Launch kernel
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (num_keys + threadsPerBlock - 1) / threadsPerBlock;
+    searchKernel<<<blocksPerGrid, threadsPerBlock>>>(
+        thrust::raw_pointer_cast(d_tree.data()),
+        d_tree.size(),
+        thrust::raw_pointer_cast(d_keys.data()),
+        thrust::raw_pointer_cast(d_results.data()),
+        num_keys);
+
+    // Transfer results back to host
+    thrust::copy(d_results.begin(), d_results.end(), results.begin());
+}
+
+void batchSearch(const std::vector<int> &tree_arr, const std::vector<int> &search_keys, std::vector<char> &results)
+{
+    int num_keys = search_keys.size();
+
+    int *d_tree, *d_keys;
+    bool *d_results;
+    cudaMalloc(&d_tree, tree_arr.size() * sizeof(int));
+    cudaMalloc(&d_keys, num_keys * sizeof(int));
+    cudaMalloc(&d_results, num_keys * sizeof(bool));
+
+    cudaMemcpy(d_tree, tree_arr.data(), tree_arr.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_keys, search_keys.data(), num_keys * sizeof(int), cudaMemcpyHostToDevice);
+
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (num_keys + threadsPerBlock - 1) / threadsPerBlock;
+    searchKernel<<<blocksPerGrid, threadsPerBlock>>>(
+        d_tree,
+        tree_arr.size(),
+        d_keys,
+        d_results,
+        num_keys);
+
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(results.data(), d_results, num_keys * sizeof(bool), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_tree);
+    cudaFree(d_keys);
+    cudaFree(d_results);
+}
 int main()
 {
     BST bst;
@@ -195,6 +278,12 @@ int main()
     std::chrono::duration<double> duration = end - start;
     printf("Time taken to search %d keys: %f milliseconds\n", M, duration.count() * 1000);
 
-    // Convert to array
-    vector<int> treeArray = bst.covertToArray();
+    // Batch search benchmark
+    vector<int> tree_arr = bst.covertToArray();
+    vector<char> results(search_keys.size(), false);
+    start = chrono::high_resolution_clock::now();
+    batchSearch(tree_arr, search_keys, results);
+    end = chrono::high_resolution_clock::now();
+    duration = end - start;
+    printf("Time taken to batch search %d keys: %f milliseconds\n", M, duration.count() * 1000);
 }
