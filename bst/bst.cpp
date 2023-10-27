@@ -178,7 +178,6 @@ int main()
 
     for (int key : data)
     {
-        printf("Inserting %d\n", key);
         bst.insert(key);
     }
 
