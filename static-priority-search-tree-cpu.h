@@ -6,7 +6,7 @@ class StaticPrioritySearchTreeCPU
 	public:
 
 	private:
-		// Want unique copies of identical trees, so no assignment or copying allowed
+		// Want unique copies of each tree, so no assignment or copying allowed
 		StaticPrioritySearchTreeCPU& operator=(StaticPrioritySearchTreeCPU &tree)	// assignment operator
 		StaticPrioritySearchTreeCPU(PrioritySearchTreeCPU &tree)	// copy constructor
 }
