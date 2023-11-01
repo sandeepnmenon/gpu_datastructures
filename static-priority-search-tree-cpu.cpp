@@ -112,7 +112,7 @@ void StaticPrioritySearchTreeCPU<T>::populateTreeRecur(const TreeNode &subtree_r
 		populateTreeRecur(subtree_root.getRightChild(), search_key_ptr_arr, median_search_key_ind + 1, search_key_high_ind, right_priority_ptr_subarr);
 }
 
-// Value-initialisation is more efficient with member initialiser lists, as they are not default-initialised before being overriden
+// Value initialisation is more efficient with member initialiser lists, as they are not default-initialised before being overriden
 template
 <
         typename T,
