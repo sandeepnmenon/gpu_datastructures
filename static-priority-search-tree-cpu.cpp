@@ -2,6 +2,8 @@
 #include <cmath>		// To use ceil() and log2()
 #include <iostream>
 #include <type_traits>	// To filter out non-numeric types of T
+#include <vector>
+
 #include "data-node.h"
 #include "static-priority-search-tree-cpu.h"
 
@@ -48,7 +50,7 @@ StaticPrioritySearchTreeCPU<T>::StaticPrioritySearchTreeCPU(DataNode<T> *data_ar
 	// Use of () after new and new[] causes value-initialisation (to 0) starting in C++03; needed for any nodes that technically contain no data
 	root = new TreeNode[(1 << std::ceil(std::log2(num_elems + 1))) - 1]();
 
-	populateTreeRecur(root, search_key_ptr_arr, 0, num_elems, priority_ptr_arr);
+	populateTreeRecur(*root, search_key_ptr_arr, 0, num_elems, priority_ptr_arr);
 
 	delete[] search_key_ptr_arr;
 }
@@ -61,55 +63,6 @@ template
 StaticPrioritySearchTreeCPU<T>::~StaticPrioritySearchTreeCPU()
 {
 	delete[] root;
-}
-
-template
-<
-        typename T,
-        typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type
->
-void StaticPrioritySearchTreeCPU<T>::populateTreeRecur(const TreeNode &subtree_root, const DataNode<T> **search_key_ptr_arr, const int search_key_low_ind, const int search_key_high_ind, const DataNode<T> **priority_ptr_subarr)
-{
-	int median_search_key_ind = (search_key_high_ind - search_key_low_ind)/2;
-	subtree_root.setTreeNode(*priority_ptr_subarr[0],
-			search_key_ptr_arr[median_search_key_ind]->search_key);
-
-	const int left_subarr_num_elems = median_search_key_ind - search_key_low_ind;
-	const int right_subarr_num_elems = search_key_high_ind - median_search_key_ind - 1;
-
-	if (left_subarr_num_elems > 0)
-	{
-		DataNode<T> **left_priority_ptr_subarr = new DataNode<T>*[left_subarr_num_elems];
-		int left_subarr_ind = 0;
-		subtree_root.setLeftChild();
-	}
-	if (right_subarr_num_elems > 0)
-	{
-		DataNode<T> **right_priority_ptr_subarr = new DataNode<T>*[right_subarr_num_elems];
-		int right_subarr_ind = 0;
-		subtree_root.setRightChild();
-	}
-
-	if (subtree_root.hasChildren())
-	{
-		// Iterate through priority_ptr_subarr, placing data with lower search key in the left subtree and data with higher search key in the right subtree
-		for (int i = 1; i < search_key_high_ind - search_key_low_ind; i++)
-		{
-			// To partially counteract the somewhat right-leaning nature of the tree under normal circumstances, put ties in the left subtree
-			if (priority_ptr_subarr[i]->search_key <= subtree_root.median_search_key)
-				// Postfix ++ returns the current value before incrementing
-				left_priority_ptr_subarr[left_subarr_ind++] = priority_ptr_subarr[i];
-			else
-				right_priority_ptr_subarr[right_subarr_ind++] = priority_ptr_subarr[i];
-		}
-	}
-
-	delete[] priority_ptr_subarr;
-
-	if (subtree_root.hasLeftChild())
-		populateTreeRecur(subtree_root.getLeftChild(), search_key_ptr_arr, search_key_low_ind, median_search_key_ind, left_priority_ptr_subarr);
-	if (subtree_root.hasRightChild())
-		populateTreeRecur(subtree_root.getRightChild(), search_key_ptr_arr, median_search_key_ind + 1, search_key_high_ind, right_priority_ptr_subarr);
 }
 
 // Value initialisation is more efficient with member initialiser lists, as they are not default-initialised before being overriden
@@ -166,4 +119,172 @@ void StaticPrioritySearchTreeCPU<T>::TreeNode::setTreeNode(DataNode<T> &source_d
 	search_key = source_data.search_key;
 	priority = source_data.priority;
 	this->median_search_key = median_search_key;
+}
+
+template
+<
+        typename T,
+        typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type
+>
+void StaticPrioritySearchTreeCPU<T>::populateTreeRecur(const TreeNode &subtree_root, const DataNode<T> **search_key_ptr_arr, const int search_key_low_ind, const int search_key_high_ind, const DataNode<T> **priority_ptr_subarr)
+{
+	int median_search_key_ind = (search_key_high_ind - search_key_low_ind)/2;
+	subtree_root.setTreeNode(*priority_ptr_subarr[0],
+			search_key_ptr_arr[median_search_key_ind]->search_key);
+
+	const int left_subarr_num_elems = median_search_key_ind - search_key_low_ind;
+	const int right_subarr_num_elems = search_key_high_ind - median_search_key_ind - 1;
+
+	if (left_subarr_num_elems > 0)
+	{
+		DataNode<T> **left_priority_ptr_subarr = new DataNode<T>*[left_subarr_num_elems];
+		int left_subarr_ind = 0;
+		subtree_root.setLeftChild();
+	}
+	if (right_subarr_num_elems > 0)
+	{
+		DataNode<T> **right_priority_ptr_subarr = new DataNode<T>*[right_subarr_num_elems];
+		int right_subarr_ind = 0;
+		subtree_root.setRightChild();
+	}
+
+	if (subtree_root.hasChildren())
+	{
+		// Iterate through priority_ptr_subarr, placing data with lower search key in the left subtree and data with higher search key in the right subtree
+		for (int i = 1; i < search_key_high_ind - search_key_low_ind; i++)
+		{
+			// To partially counteract the somewhat right-leaning nature of the tree under normal circumstances, put ties in the left subtree
+			if (priority_ptr_subarr[i]->search_key <= subtree_root.median_search_key)
+				// Postfix ++ returns the current value before incrementing
+				left_priority_ptr_subarr[left_subarr_ind++] = priority_ptr_subarr[i];
+			else
+				right_priority_ptr_subarr[right_subarr_ind++] = priority_ptr_subarr[i];
+		}
+	}
+
+	delete[] priority_ptr_subarr;
+
+	if (subtree_root.hasLeftChild())
+		populateTreeRecur(subtree_root.getLeftChild(), search_key_ptr_arr, search_key_low_ind, median_search_key_ind, left_priority_ptr_subarr);
+	if (subtree_root.hasRightChild())
+		populateTreeRecur(subtree_root.getRightChild(), search_key_ptr_arr, median_search_key_ind + 1, search_key_high_ind, right_priority_ptr_subarr);
+}
+
+template
+<
+        typename T,
+        typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type
+>
+void StaticPrioritySearchTreeCPU<T>::reportAllNodes(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T min_priority)
+{
+	if (min_priority > subtree_root.priority) return;	// No more nodes to report
+
+	if (subtree_root.hasLeftChild())
+		reportAllNodes(result_vec, subtree_root.getLeftChild(), min_priority);
+	if (subtree_root.hasRightChild())
+		reportAllNodes(result_vec, subtree_root.getRightChild(), min_priority);
+}
+
+template
+<
+        typename T,
+        typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type
+>
+void StaticPrioritySearchTreeCPU<T>::threeSidedSearchRecur(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T min_search_key, T max_search_key, T min_priority)
+{
+	if (min_priority > subtree_root.priority) return;	// No more nodes to report
+
+	// Check if this node satisfies the search criteria
+	else if (min_search_key <= subtree_root.search_key && subtree_root.search_key <= max_search_key)
+		result_vec.push_back(DataNode<T>
+							 {
+							 	subtree_root.search_key,	// Assign to DataNode.search_key
+								subtree_root.priority		// Assign to DataNode.priority
+							 });
+
+	// Continue search
+
+	// Search interval is fully to the right of median_search_key
+	if (subtree_root.median_search_key < min_search_key && subtree_root.hasRightChild())
+		threeSidedSearchRecur(result_vec, subtree_root.getRightChild(), min_search_key, max_search_key, min_priority);
+	// Search interval is fully to the left of median_search_key
+	else if (subtree_root.median_search_key > max_search_key && subtree_root.hasLeftChild())
+		threeSidedSearchRecur(result_vec, subtree_root.getLeftChild(), min_search_key, max_search_key, min_priority);
+	// Max value of search interval is bounded by median_search_key, so can do a two-sided search on left subtree
+	else if (subtree_root.median_search_key == max_search_key && subtree_root.hasLeftChild())
+		twoSidedRightSearchRecur(result_vec, subtree_root.getLeftChild(), min_search_key, max_search_key, min_priority);
+	else
+	{
+		// median_search_key is in the boundary of the search key interval [min_search_key, max_search_key); split into 2 two-sided searches
+		if (subtree_root.hasLeftChild())
+			twoSidedRightSearchRecur(result_vec, subtree_root.getLeftChild(), min_search_key, min_priority);
+		if (subtree_root.hasRightChild())
+			twoSidedLeftSearchRecur(result_vec, subtree_root.getRightChild(), max_search_key, min_priority);
+	}
+}
+
+template
+<
+        typename T,
+        typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type
+>
+void twoSidedLeftSearchRecur(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T max_search_key, T min_priority)
+{
+	if (min_priority > subtree_root.priority) return;	// No more nodes to report
+
+	// Check if this node satisfies the search criteria
+	if (subtree_root.search_key <= max_search_key)
+		result_vec.push_back(DataNode<T>
+							 {
+							 	subtree_root.search_key,	// Assign to DataNode.search_key
+								subtree_root.priority		// Assign to DataNode.priority
+							 });
+
+	// Continue search
+
+	// Max boundary is to right of median_search_key, so all left subtree search keys are valid, and potentially some in the right subtree
+	if (subtree_root.median_search_key < max_search_key)
+	{
+		if (subtree_root.hasLeftChild())
+			// Report all nodes in left subtree with priority higher than min_priority
+			reportAllNodes(result_vec, subtree_root.getLeftChild(), min_priority);
+		if (subtree_root.hasRightChild())
+			twoSidedLeftSearchRecur(result_vec, subtree_root.getRightChild(), max_search_key, min_priority);
+	}
+	// Only left subtree search keys can be valid
+	else if (subtree_root.hasLeftChild())
+		twoSidedLeftSearchRecur(result_vec, subtree_root.getLeftChild(), max_search_key, min_priority);
+}
+
+template
+<
+        typename T,
+        typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type
+>
+void twoSidedRightSearchRecur(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T min_search_key, T min_priority)
+{
+	if (min_priority > subtree_root.priority) return;	// No more nodes to report
+
+	// Check if this node satisfies the search criteria
+	if (subtree_root.search_key >= max_search_key)
+		result_vec.push_back(DataNode<T>
+							 {
+							 	subtree_root.search_key,	// Assign to DataNode.search_key
+								subtree_root.priority		// Assign to DataNode.priority
+							 });
+
+	// Continue search
+
+	// Min boundary is to left of median_search_key or contains median_search_key, so all right subtree search keys are valid, and potentially some in the left subtree
+	if (subtree_root.median_search_key >= min_search_key)
+	{
+		if (subtree_root.hasRightChild())
+			// Report all nodes in right subtree with priority higher than min_priority
+			reportAllNodes(result_vec, subtree_root.getRightChild(), min_priority);
+		if (subtree_root.hasLeftChild())
+			twoSidedRightSearchRecur(result_vec, subtree_root.getLeftChild(), max_search_key, min_priority);
+	}
+	// Only right subtree search keys can be valid
+	else if (subtree_root.hasRightChild())
+		twoSidedLeftSearchRecur(result_vec, subtree_root.getRightChild(), max_search_key, min_priority);
 }

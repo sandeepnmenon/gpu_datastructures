@@ -17,19 +17,27 @@ class StaticPrioritySearchTreeCPU
 	public:
 		StaticPrioritySearchTreeCPU(T *search_keys, int num_search_keys, T *priorities, int num_priorities);
 		virtual ~StaticPrioritySearchTreeCPU();
-		// Returns a list of satisfying nodes; maybe the array index of each satisfying node?
-		ThreeSidedSearch();
-		TwoSidedLeftSearch();
-		TwoSidedRightSearch();
+		// Need space between the two >>, or else will be considered an operator
+		inline std::vector< DataNode<T> > threeSidedSearch(T min_search_key, T max_search_key, T min_priority)
+		{
+			std::vector< DataNode<T> > v;
+			threeSidedSearchRecur(v, *root, min_search_key, max_search_key, min_priority);
+			return v;
+		};
+		inline std::vector< DataNode<T> > twoSidedLeftSearch(T max_search_key, T min_priority)
+		{
+			std::vector< DataNode<T> > v;
+			twoSidedLeftSearchRecur(v, *root, max_search_key, min_priority);
+			return v;
+		};
+		inline std::vector< DataNode<T> > twoSidedRightSearch(T min_search_key, T min_priority)
+		{
+			std::vector< DataNode<T> > v;
+			twoSidedRightSearchRecur(v, *root, min_search_key, min_priority);
+			return v;
+		};
 
 	private:
-		// Want unique copies of each tree, so no assignment or copying allowed
-		StaticPrioritySearchTreeCPU& operator=(StaticPrioritySearchTreeCPU &tree);	// assignment operator
-		StaticPrioritySearchTreeCPU(StaticPrioritySearchTreeCPU &tree);	// copy constructor
-
-		// Recursive constructor helper to populate the tree
-		void populateTreeRecur(const TreeNode &subtree_root, const DataNode<T> **search_key_ptr_arr, const int search_key_low_ind, const int search_key_high_ind, const DataNode<T> **priority_ptr_subarr);
-
 		class TreeNode
 		{
 			public:
@@ -56,8 +64,7 @@ class StaticPrioritySearchTreeCPU
 				T search_key;
 				T priority;
 				T median_search_key;
-				int arr_ind;	// Location of node in tree array; if this is 0 when the array entry is clearly not 0, it's an extra indication that 
-				// also 1 byte, like char, but doesn't auto-convert non-zero values other than 1 to 1
+				// bool is 1 byte like char but auto-converts non-zero values other than 1 to 1
 				char code;
 
 				// Bitcodes used to indicate presence of left/right children (and potentially other values as necessary) to save space, as bool actually takes up 1 byte, same as a char
@@ -67,6 +74,18 @@ class StaticPrioritySearchTreeCPU
 					HAS_RIGHT_CHILD = 0x1
 				};
 		};
+		// Want unique copies of each tree, so no assignment or copying allowed
+		StaticPrioritySearchTreeCPU& operator=(StaticPrioritySearchTreeCPU &tree);	// assignment operator
+		StaticPrioritySearchTreeCPU(StaticPrioritySearchTreeCPU &tree);	// copy constructor
+
+		// Recursive constructor helper to populate the tree
+		void populateTreeRecur(const TreeNode &subtree_root, const DataNode<T> **search_key_ptr_arr, const int search_key_low_ind, const int search_key_high_ind, const DataNode<T> **priority_ptr_subarr);
+
+		// Search-related helper functions
+		void reportAllNodes(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T min_priority);
+		void threeSidedSearchRecur(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T min_search_key, T max_search_key, T min_priority);
+		void twoSidedLeftSearchRecur(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T max_search_key, T min_priority);
+		void twoSidedRightSearchRecur(std::vector< DataNode<T> > &result_vec, TreeNode &subtree_root, T min_search_key, T min_priority);
 
 		TreeNode *root;
 }
