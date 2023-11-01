@@ -28,7 +28,7 @@ class StaticPrioritySearchTreeCPU
 		StaticPrioritySearchTreeCPU(StaticPrioritySearchTreeCPU &tree);	// copy constructor
 
 		// Recursive constructor helper to populate the tree
-		void populateTreeRecur(TreeNode *root, search_key_ptr_arr, search_key_low_ind, search_key_high_ind, priority_ptr_subarr);
+		void populateTreeRecur(const TreeNode &subtree_root, const DataNode<T> **search_key_ptr_arr, const int search_key_low_ind, const int search_key_high_ind, const DataNode<T> **priority_ptr_subarr);
 
 		class TreeNode
 		{
@@ -41,6 +41,10 @@ class StaticPrioritySearchTreeCPU
 
 				void setTreeNode(DataNode<T> &source_data, T median_search_key);
 
+				// Current index is this-root
+				inline TreeNode &getLeftChild() {return root[2*(this-root) + 1]};
+				inline TreeNode &getRightChild() {return root[2*(this-root) + 2]};
+				inline bool hasChildren() {return (bool) (code & (HAS_LEFT_CHILD | HAS_RIGHT_CHILD))};
 				inline bool hasLeftChild() {return (bool) (code & HAS_LEFT_CHILD)};
 				inline bool hasRightChild() {return (bool) (code & HAS_RIGHT_CHILD)};
 				inline void setLeftChild() {code |= HAS_LEFT_CHILD};
@@ -52,6 +56,7 @@ class StaticPrioritySearchTreeCPU
 				T search_key;
 				T priority;
 				T median_search_key;
+				int arr_ind;	// Location of node in tree array; if this is 0 when the array entry is clearly not 0, it's an extra indication that 
 				// also 1 byte, like char, but doesn't auto-convert non-zero values other than 1 to 1
 				char code;
 
@@ -63,8 +68,6 @@ class StaticPrioritySearchTreeCPU
 				};
 		};
 
-		inline TreeNode *getLeftChild(TreeNode *root, int curr_ind) {return root[2*curr_ind + 1]};
-		inline TreeNode *getRightChild(TreeNode *root, int curr_ind) {return root[2*curr_ind + 2]};
 		TreeNode *root;
 }
 
