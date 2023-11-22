@@ -6,3 +6,4 @@
 *.fatbin
 .vscode/
 a.out
+build/
