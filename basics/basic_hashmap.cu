@@ -27,7 +27,7 @@ struct Bucket
     Value value;
     // Other fields or methods for atomic operations
 
-    __device__ std::pair<Key, Value> load(memory_order order) const
+    __device__ Pair<Key, Value> load(memory_order order) const
     {
         return {key, value};
     }
