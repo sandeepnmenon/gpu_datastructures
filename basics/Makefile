@@ -1,7 +1,7 @@
 all: driver
 
-driver: driver.cpp basic_hashmap.cu
-	nvcc -o driver driver.cpp basic_hashmap.cu -I.
+driver: driver.cu basic_hashmap.cu
+	nvcc --std=c++11 -o driver driver.cu basic_hashmap.cu -I.
 
 clean:
 	rm -f driver

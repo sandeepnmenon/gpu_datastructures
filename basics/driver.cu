@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#include <cooperative_groups.h>
 #include "basic_hashmap.cuh" // Include your hashmap implementation here
 
 namespace cg = cooperative_groups;
@@ -14,6 +15,7 @@ __global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashma
         hashmap->insert(group, keys[idx], values[idx]);
     }
 }
+
 
 int main()
 {
