@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <cooperative_groups.h>
-#include "basic_hashmap.cuh" // Include your hashmap implementation here
+#include "basic_hashmap.cu"
 
 namespace cg = cooperative_groups;
 
