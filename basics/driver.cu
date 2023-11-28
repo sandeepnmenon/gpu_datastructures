@@ -16,7 +16,6 @@ __global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashma
     }
 }
 
-
 int main()
 {
     // Initialize data
