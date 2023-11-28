@@ -3,7 +3,7 @@
 
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
-using cg = cooperative_groups;
+namespace cg = cooperative_groups;
 
 enum class probing_state
 {
