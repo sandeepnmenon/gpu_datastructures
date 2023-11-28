@@ -17,8 +17,16 @@ enum class probing_state
     CONTINUE
 };
 
-// Add this to the top of your file or in the Hashmap class
-constexpr int empty_sentinel = -1; // Or any other appropriate value
+template <typename T1, typename T2>
+struct Pair
+{
+    T1 first;
+    T2 second;
+
+    __device__ Pair() : first(T1()), second(T2()) {}
+
+    __device__ Pair(const T1 &a, const T2 &b) : first(a), second(b) {}
+};
 
 template <typename Key, typename Value>
 struct Bucket
@@ -32,8 +40,8 @@ struct Bucket
         return {key, value};
     }
 
-    __device__ bool compare_exchange_strong(std::pair<Key, Value> &expected,
-                                            std::pair<Key, Value> desired,
+    __device__ bool compare_exchange_strong(Pair<Key, Value> &expected,
+                                            Pair<Key, Value> desired,
                                             memory_order order)
     {
         return atomicCAS(reinterpret_cast<unsigned long long int *>(this),
@@ -42,6 +50,8 @@ struct Bucket
                *reinterpret_cast<unsigned long long int *>(&expected);
     }
 };
+
+__device__ static constexpr int empty_sentinel = -1; // Or any other appropriate value
 
 template <typename Key, typename Value>
 class Hashmap
@@ -92,12 +102,12 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
     while (true)
     {
         // load the contents of the bucket at the current probe position of each rank in a coalesced manner
-        auto [old_k, old_v] = buckets[i].load(memory_order_relaxed);
+        auto old_kv = buckets[i].load(memory_order_relaxed);
         // input key is already present in the map
-        if (group.any(old_k == k))
+        if (group.any(old_kv.first == k))
             return false;
         // each rank checks if its current bucket is empty, i.e., a candidate bucket for insertion
-        auto const empty_mask = group.ballot(old_k == empty_sentinel);
+        auto const empty_mask = group.ballot(old_kv.first == empty_sentinel);
         // it there is an empty buckets in the group's current probing window
         if (empty_mask)
         {
@@ -105,15 +115,16 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
             auto const candidate = __ffs(empty_mask) - 1;
             if (group.thread_rank() == candidate)
             {
-                // attempt atomically swapping the input pair into the bucket
+                // attempt atomically swapping the input Pair into the bucket
+                Pair<Key, Value> desired(k, v);
                 bool const success = buckets[i].compare_exchange_strong(
-                    {old_k, old_v}, {k, v}, memory_order_relaxed);
+                    old_kv, desired, memory_order_relaxed);
                 if (success)
                 {
                     // insertion went successful
                     state = probing_state::SUCCESS;
                 }
-                else if (old_k == k)
+                else if (old_kv.first == k)
                 {
                     // else, re-check if a duplicate key has been inserted at the current probing position
                     state = probing_state::DUPLICATE;
@@ -140,13 +151,13 @@ __device__ Value *Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, Key 
     auto i = (hash(k) + group.thread_rank()) % capacity;
     while (true)
     {
-        auto [old_k, old_v] = buckets[i].load(memory_order_relaxed);
-        if (group.any(old_k == k))
+        auto old_kv = buckets[i].load(memory_order_relaxed);
+        if (group.any(old_kv.first == k))
         {
             // Found the key
-            return &old_v;
+            return &(old_kv.second);
         }
-        else if (old_k == empty_sentinel)
+        else if (old_kv.first == empty_sentinel)
         {
             // Key not found
             return nullptr;
@@ -161,15 +172,16 @@ __device__ bool Hashmap<Key, Value>::erase(cg::thread_block_tile<4> group, Key k
     auto i = (hash(k) + group.thread_rank()) % capacity;
     while (true)
     {
-        auto [old_k, old_v] = buckets[i].load(memory_order_relaxed);
-        if (group.any(old_k == k))
+        auto old_kv = buckets[i].load(memory_order_relaxed);
+        if (group.any(old_kv.first == k))
         {
             // Found the key, attempt to remove it
+            Pair<Key, Value> empty(empty_sentinel, Value{});
             bool const success = buckets[i].compare_exchange_strong(
-                {old_k, old_v}, {empty_sentinel, Value{}}, memory_order_relaxed);
+                old_kv, empty, memory_order_relaxed);
             return success;
         }
-        else if (old_k == empty_sentinel)
+        else if (old_kv.first == empty_sentinel)
         {
             // Key not found
             return false;
