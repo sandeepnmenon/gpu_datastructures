@@ -9,7 +9,7 @@ all: $(EXECUTABLE)
 
 # Build the driver executable
 $(EXECUTABLE): $(SOURCE)
-	$(NVCC) --std=c++17 $(FLAGS) -o $(EXECUTABLE) $(SOURCE)
+	$(NVCC) --std=c++11 $(FLAGS) -o $(EXECUTABLE) $(SOURCE)
 
 # Clean up the build
 clean:
