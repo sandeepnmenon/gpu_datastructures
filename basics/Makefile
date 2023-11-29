@@ -1,7 +1,7 @@
 # Variables
 EXECUTABLE = driver
 SOURCE = driver.cu
-FLAGS = -I. -g -G
+FLAGS = -I. -g -G -00
 NVCC = nvcc
 
 # Default target
