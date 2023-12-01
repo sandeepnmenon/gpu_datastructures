@@ -21,5 +21,5 @@ CPMAddPackage(
      "BUILD_EXAMPLES OFF"
 )
 
-add_executable(static_map_test static_map_test.cu)
-target_link_libraries(static_map_test cuco)
+add_executable(host_bulk_example host_bulk_example.cu)
+target_link_libraries(host_bulk_example cuco)
