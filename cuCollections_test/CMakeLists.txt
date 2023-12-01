@@ -13,8 +13,8 @@ include(cmake/CPM.cmake)
 
 CPMAddPackage(
   NAME cuco
-  GITHUB_REPOSITORY NVIDIA/cuCollections
-  GIT_TAG dev
+  GITHUB_REPOSITORY sandeepnmenon/cuCollections
+  GIT_TAG cmake3.22
   OPTIONS
      "BUILD_TESTS OFF"
      "BUILD_BENCHMARKS OFF"
