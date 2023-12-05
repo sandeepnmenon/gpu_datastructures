@@ -60,6 +60,8 @@ public:
     Hashmap(size_t capacity);
     ~Hashmap();
 
+    __device__ bool insert(Key k, Value v);
+
     __device__ bool insert(cg::thread_block_tile<4> group, Key k, Value v);
 
     __device__ Value *find(cg::thread_block_tile<4> group, Key k);
@@ -91,6 +93,41 @@ template <typename Key, typename Value>
 Hashmap<Key, Value>::~Hashmap()
 {
     cudaFree(buckets);
+}
+
+template <typename Key, typename Value>
+__device__ bool Hashmap<Key, Value>::insert(Key k, Value v)
+{
+    // get initial probing position from the hash value of the key
+    auto i = hash(k) % capacity;
+    while (true)
+    {
+        // load the content of the bucket at the current probe position
+        auto old_kv = buckets[i].load(memory_order_relaxed);
+
+        // if the bucket is empty we can attempt to insert the pair
+        if (old_kv.first == empty_sentinel)
+        {
+            // try to atomically replace the current content of the bucket with the input pair
+            Pair<Key, Value> desired(k, v);
+            bool const success = buckets[i].compare_exchange_strong(
+                old_kv, desired, memory_order_relaxed);
+            if (success)
+            {
+                // store was successful
+                return true;
+            }
+        }
+        else if (old_kv.first == k)
+        {
+            // input key is already present in the map
+            return false;
+        }
+        // if the bucket was already occupied move to the next (linear) probing position
+        // using the modulo operator to wrap back around to the beginning if we
+        // go beyond the capacity
+        i = ++i % capacity;
+    }
 }
 
 template <typename Key, typename Value>

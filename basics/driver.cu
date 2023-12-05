@@ -6,13 +6,22 @@
 
 namespace cg = cooperative_groups;
 
-__global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashmap<int, int> *hashmap)
+__global__ void testIntInsertCG(int *keys, int *values, size_t numElements, Hashmap<int, int> *hashmap)
 {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < numElements)
     {
         auto group = cg::tiled_partition<4>(cg::this_thread_block());
         hashmap->insert(group, keys[idx], values[idx]);
+    }
+}
+
+__global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashmap<int, int> *hashmap)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < numElements)
+    {
+        hashmap->insert(keys[idx], values[idx]);
     }
 }
 
