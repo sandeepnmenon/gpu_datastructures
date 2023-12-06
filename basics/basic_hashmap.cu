@@ -192,6 +192,7 @@ __device__ Value Hashmap<Key, Value>::find(Key k)
             // Key not found
             return Value{};
         }
+        i = ++i % capacity;
     }
 }
 
