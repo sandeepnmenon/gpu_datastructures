@@ -1,17 +1,19 @@
 #include <iostream>
+#include <map>
+#include <unistd.h>
+#include <functional>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <cooperative_groups.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/random.h>
-#include <thrust/shuffle.h>
 
 #include "basic_hashmap.cu"
+#include "utils.cuh"
 
 namespace cg = cooperative_groups;
 
-__global__ void testIntInsertCG(int *keys, int *values, size_t numElements, Hashmap<int, int> *hashmap)
+__global__ void testIntInsertCG(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap)
 {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < numElements)
@@ -21,7 +23,7 @@ __global__ void testIntInsertCG(int *keys, int *values, size_t numElements, Hash
     }
 }
 
-__global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashmap<int, int> *hashmap)
+__global__ void testIntInsert(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap)
 {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < numElements)
@@ -30,29 +32,74 @@ __global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashma
     }
 }
 
-int main()
+void insertionBenchmarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, const thrust::device_vector<int> &d_values)
 {
-    // Initialize data
-    const size_t numElements = 200; // Adjust as needed
-    thrust::host_vector<int> keys(numElements);
-    thrust::host_vector<int> values(numElements);
-
-    // Fill keys and values with test data
-    thrust::sequence(keys.begin(), keys.end());
-    thrust::sequence(values.begin(), values.end());
-    thrust::default_random_engine gen;
-    thrust::shuffle(keys.begin(), keys.end(), gen);
-
-    // Copy data from host to device
-    thrust::device_vector<int> d_keys = keys;
-    thrust::device_vector<int> d_values = values;
-
     // Define grid and block sizes
+    int numElements = d_keys.size();
     int blockSize = 256;
     int gridSize = (numElements + blockSize - 1) / blockSize;
 
+    testIntInsert<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
+    cudaDeviceSynchronize();
+}
+
+void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, const thrust::device_vector<int> &d_values)
+{
+    // Define grid and block sizes
+    int numElements = d_keys.size();
+    int blockSize = 256;
+    int gridSize = (numElements + blockSize - 1) / blockSize;
+
+    testIntInsertCG<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
+    cudaDeviceSynchronize();
+}
+
+void searchBenchMarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, thrust::device_vector<int> &d_results)
+{
+    hashmap->getValues(d_keys, d_results);
+    cudaDeviceSynchronize();
+}
+
+bool defaultInsert = false;
+bool cooperativeGroupsInsert = false;
+bool defaultSearch = false;
+std::map<char, std::function<void()>> actions;
+
+void setupActions()
+{
+    actions['d'] = [&]()
+    { defaultInsert = true; std::cout << "Default insert\n"; };
+    actions['c'] = [&]()
+    { cooperativeGroupsInsert = true; std::cout << "Cooperative groups insert\n"; };
+    actions['s'] = [&]()
+    { defaultSearch = true; std::cout << "Default search\n"; };
+}
+
+int main(int argc, char **argv)
+{
+    setupActions();
+
+    int opt;
+    while ((opt = getopt(argc, argv, "dcs")) != -1)
+        if (actions.find(opt) != actions.end())
+            actions[opt]();
+        else
+            std::cerr << "Unknown option: " << char(opt) << std::endl;
+
+    // Initialize data
+    const size_t numElements = 1000000; // Adjust as needed
+    thrust::host_vector<int> h_keys(numElements), h_values(numElements);
+
+    // Fill keys and values with test data
+    initializeData(h_keys, numElements);
+    initializeData(h_values, numElements);
+
+    // Copy data from host to device
+    thrust::device_vector<int> d_keys = h_keys;
+    thrust::device_vector<int> d_values = h_values;
+
     // Create and initialize hashmap
-    int capacity = 100000; // Or any other size you prefer
+    int capacity = 2 * numElements; // Or any other size you prefer
 
     Hashmap<int, int> *hashmap; // Assuming constructor initializes the GPU memory
     cudaMallocManaged(&hashmap, sizeof(Hashmap<int, int>));
@@ -63,45 +110,25 @@ int main()
         std::cerr << "CUDA error malloc memcpy: " << cudaGetErrorString(err) << std::endl;
         // handle error
     }
-    // ...
 
-    // Start benchmark
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    if (defaultInsert)
+        benchmarkKernel([&]()
+                        { insertionBenchmarkFunc(hashmap, d_keys, d_values); },
+                        "Insertion");
 
-    // Launch kernel
-    testIntInsert<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
-    cudaDeviceSynchronize(); // Wait for the kernel to finish
-    err = cudaGetLastError();
-    if (err != cudaSuccess)
+    if (cooperativeGroupsInsert)
+        benchmarkKernel([&]()
+                        { insertionBenchmarkCGFunc(hashmap, d_keys, d_values); },
+                        "Insertion CG");
+
+    if (defaultSearch)
     {
-        std::cerr << "CUDA error kernel: " << cudaGetErrorString(err) << std::endl;
-        // handle error
-    }
+        thrust::device_vector<int> d_results(d_keys.size());
+        benchmarkKernel([&]()
+                        { searchBenchMarkFunc(hashmap, d_keys, d_results); },
+                        "Search");
 
-    // End benchmark
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
-
-    std::cout << "Insertion time: " << milliseconds << " ms\n";
-
-    // Check if all elements were inserted
-    thrust::device_vector<int> d_results(d_keys.size());
-    hashmap->getValues(d_keys, d_results);
-    thrust::host_vector<int> h_results = d_results;
-
-    bool areEqual = thrust::equal(h_results.begin(), h_results.end(), values.begin());
-    if (areEqual)
-    {
-        std::cout << "Success: d_results and h_values are the same." << std::endl;
-    }
-    else
-    {
-        std::cout << "Error: d_results and h_values differ." << std::endl;
+        checkResults(d_results, h_values);
     }
 
     // Cleanup
