@@ -1,6 +1,7 @@
 
 #include <memory>
 #include <cuda_runtime.h>
+#include <thrust/device_vector.h>
 #include <cooperative_groups.h>
 namespace cg = cooperative_groups;
 
@@ -45,12 +46,12 @@ struct Bucket
     }
 };
 
-// Simple hash function for integers
-__host__ __device__ unsigned int hash_custom(int key)
+template <typename T>
+__host__ __device__ unsigned int hash_custom(T key)
 {
-    // Simple example hash function (you can replace it with a better one)
-    return key * 2654435761u;
+    return static_cast<unsigned int>(key) * 2654435761u;
 }
+
 __device__ static constexpr int empty_sentinel = -1; // Or any other appropriate value
 
 template <typename Key, typename Value>
@@ -235,6 +236,3 @@ void Hashmap<Key, Value>::getValues(const thrust::device_vector<Key> &keys, thru
     int gridSize = (keys.size() + blockSize - 1) / blockSize;
     findKernel<<<gridSize, blockSize>>>(this, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
 }
-
-// Explicit template instantiation
-template class Hashmap<int, int>; // Example instantiation, adjust types as needed
