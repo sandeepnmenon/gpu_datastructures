@@ -7,6 +7,7 @@
 #include <cooperative_groups.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <thrust/sequence.h>
 
 #include "basic_hashmap.cu"
 #include "utils.cuh"
