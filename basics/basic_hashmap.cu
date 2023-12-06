@@ -1,14 +1,8 @@
 
+#include <memory>
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
-
 namespace cg = cooperative_groups;
-
-enum memory_order
-{
-    memory_order_relaxed
-    // Add other memory orders if needed
-};
 
 enum class probing_state
 {
@@ -35,14 +29,14 @@ struct Bucket
     Value value;
     // Other fields or methods for atomic operations
 
-    __device__ Pair<Key, Value> load(memory_order order) const
+    __device__ Pair<Key, Value> load(std::memory_order order) const
     {
-        return {key, value};
+        return Pair<Key, Value>(key, value);
     }
 
-    __device__ bool compare_exchange_strong(Pair<Key, Value> &expected,
+    __device__ bool compare_exchange_strong(Pair<Key, Value> expected,
                                             Pair<Key, Value> desired,
-                                            memory_order order)
+                                            std::memory_order order)
     {
         return atomicCAS(reinterpret_cast<unsigned long long int *>(this),
                          *reinterpret_cast<unsigned long long int *>(&expected),
@@ -51,6 +45,12 @@ struct Bucket
     }
 };
 
+// Simple hash function for integers
+__host__ __device__ unsigned int hash_custom(int key)
+{
+    // Simple example hash function (you can replace it with a better one)
+    return key * 2654435761u;
+}
 __device__ static constexpr int empty_sentinel = -1; // Or any other appropriate value
 
 template <typename Key, typename Value>
@@ -64,29 +64,22 @@ public:
 
     __device__ bool insert(cg::thread_block_tile<4> group, Key k, Value v);
 
-    __device__ Value *find(cg::thread_block_tile<4> group, Key k);
+    __device__ Value find(Key k);
 
     __device__ bool erase(cg::thread_block_tile<4> group, Key k);
 
-    // Additional functions like find, erase, etc.
+    void getValues(const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results);
 
-private:
     Bucket<Key, Value> *buckets;
-    size_t capacity;
+    size_t capacity{};
     // Other private members and methods
 };
 
-// Simple hash function for integers
-__device__ unsigned int hash(int key)
-{
-    return static_cast<unsigned int>(key); // Replace with a better hash function if needed
-}
-
 template <typename Key, typename Value>
-Hashmap<Key, Value>::Hashmap(size_t cap) : capacity(cap), buckets(nullptr)
+Hashmap<Key, Value>::Hashmap(size_t cap) : capacity{cap}, buckets(nullptr)
 {
     cudaMalloc(&buckets, capacity * sizeof(Bucket<Key, Value>));
-    cudaMemset(buckets, 0, capacity * sizeof(Bucket<Key, Value>)); // Initialize to default values
+    cudaMemset(buckets, empty_sentinel, capacity * sizeof(Bucket<Key, Value>)); // Initialize to default values
 }
 
 template <typename Key, typename Value>
@@ -99,19 +92,18 @@ template <typename Key, typename Value>
 __device__ bool Hashmap<Key, Value>::insert(Key k, Value v)
 {
     // get initial probing position from the hash value of the key
-    auto i = hash(k) % capacity;
+    auto i = hash_custom(k) % capacity;
     while (true)
     {
         // load the content of the bucket at the current probe position
-        auto old_kv = buckets[i].load(memory_order_relaxed);
-
+        auto old_kv = buckets[i].load(std::memory_order_relaxed);
         // if the bucket is empty we can attempt to insert the pair
         if (old_kv.first == empty_sentinel)
         {
             // try to atomically replace the current content of the bucket with the input pair
             Pair<Key, Value> desired(k, v);
             bool const success = buckets[i].compare_exchange_strong(
-                old_kv, desired, memory_order_relaxed);
+                old_kv, desired, std::memory_order_relaxed);
             if (success)
             {
                 // store was successful
@@ -134,12 +126,12 @@ template <typename Key, typename Value>
 __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key k, Value v)
 {
     // get initial probing position from the hash value of the key
-    auto i = (hash(k) + group.thread_rank()) % capacity;
+    auto i = (hash_custom(k) + group.thread_rank()) % capacity;
     auto state = probing_state::CONTINUE;
     while (true)
     {
         // load the contents of the bucket at the current probe position of each rank in a coalesced manner
-        auto old_kv = buckets[i].load(memory_order_relaxed);
+        auto old_kv = buckets[i].load(std::memory_order_relaxed);
         // input key is already present in the map
         if (group.any(old_kv.first == k))
             return false;
@@ -155,7 +147,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
                 // attempt atomically swapping the input Pair into the bucket
                 Pair<Key, Value> desired(k, v);
                 bool const success = buckets[i].compare_exchange_strong(
-                    old_kv, desired, memory_order_relaxed);
+                    old_kv, desired, std::memory_order_relaxed);
                 if (success)
                 {
                     // insertion went successful
@@ -183,39 +175,38 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
 }
 
 template <typename Key, typename Value>
-__device__ Value *Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, Key k)
+__device__ Value Hashmap<Key, Value>::find(Key k)
 {
-    auto i = (hash(k) + group.thread_rank()) % capacity;
+    auto i = hash_custom(k) % capacity;
     while (true)
     {
-        auto old_kv = buckets[i].load(memory_order_relaxed);
-        if (group.any(old_kv.first == k))
+        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        if (old_kv.first == k)
         {
-            // Found the key
-            return &(old_kv.second);
+            // Found the key, return the value
+            return old_kv.second;
         }
         else if (old_kv.first == empty_sentinel)
         {
             // Key not found
-            return nullptr;
+            return Value{};
         }
-        i = (i + group.size()) % capacity;
     }
 }
 
 template <typename Key, typename Value>
 __device__ bool Hashmap<Key, Value>::erase(cg::thread_block_tile<4> group, Key k)
 {
-    auto i = (hash(k) + group.thread_rank()) % capacity;
+    auto i = (hash_custom(k) + group.thread_rank()) % capacity;
     while (true)
     {
-        auto old_kv = buckets[i].load(memory_order_relaxed);
+        auto old_kv = buckets[i].load(std::memory_order_relaxed);
         if (group.any(old_kv.first == k))
         {
             // Found the key, attempt to remove it
             Pair<Key, Value> empty(empty_sentinel, Value{});
             bool const success = buckets[i].compare_exchange_strong(
-                old_kv, empty, memory_order_relaxed);
+                old_kv, empty, std::memory_order_relaxed);
             return success;
         }
         else if (old_kv.first == empty_sentinel)
@@ -225,6 +216,24 @@ __device__ bool Hashmap<Key, Value>::erase(cg::thread_block_tile<4> group, Key k
         }
         i = (i + group.size()) % capacity;
     }
+}
+
+template <typename Key, typename Value>
+__global__ void findKernel(Hashmap<Key, Value> *hashmap, const Key *keys, Value *results, int numValues)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < numValues)
+    {
+        results[idx] = hashmap->find(keys[idx]);
+    }
+}
+
+template <typename Key, typename Value>
+void Hashmap<Key, Value>::getValues(const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+{
+    int blockSize = 256;
+    int gridSize = (keys.size() + blockSize - 1) / blockSize;
+    findKernel<<<gridSize, blockSize>>>(this, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
 }
 
 // Explicit template instantiation

@@ -2,6 +2,11 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <cooperative_groups.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/random.h>
+#include <thrust/shuffle.h>
+
 #include "basic_hashmap.cu"
 
 namespace cg = cooperative_groups;
@@ -28,39 +33,36 @@ __global__ void testIntInsert(int *keys, int *values, size_t numElements, Hashma
 int main()
 {
     // Initialize data
-    const size_t numElements = 10000; // Adjust as needed
-    int *keys = new int[numElements];
-    int *values = new int[numElements];
+    const size_t numElements = 200; // Adjust as needed
+    thrust::host_vector<int> keys(numElements);
+    thrust::host_vector<int> values(numElements);
 
     // Fill keys and values with test data
-    for (size_t i = 0; i < numElements; i++)
-    {
-        keys[i] = i;
-        values[i] = i;
-    }
+    thrust::sequence(keys.begin(), keys.end());
+    thrust::sequence(values.begin(), values.end());
+    thrust::default_random_engine gen;
+    thrust::shuffle(keys.begin(), keys.end(), gen);
 
-    // Allocate memory on GPU and copy data
-    int *d_keys;
-    int *d_values;
-    cudaMalloc(&d_keys, numElements * sizeof(int));
-    cudaMalloc(&d_values, numElements * sizeof(int));
-    cudaMemcpy(d_keys, keys, numElements * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_values, values, numElements * sizeof(int), cudaMemcpyHostToDevice);
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess)
-    {
-        std::cerr << "CUDA error malloc memcpy: " << cudaGetErrorString(err) << std::endl;
-        // handle error
-    }
+    // Copy data from host to device
+    thrust::device_vector<int> d_keys = keys;
+    thrust::device_vector<int> d_values = values;
 
     // Define grid and block sizes
     int blockSize = 256;
     int gridSize = (numElements + blockSize - 1) / blockSize;
 
     // Create and initialize hashmap
-    size_t capacity = 10000; // Or any other size you prefer
+    int capacity = 100000; // Or any other size you prefer
 
-    Hashmap<int, int> *hashmap = new Hashmap<int, int>(capacity); // Assuming constructor initializes the GPU memory
+    Hashmap<int, int> *hashmap; // Assuming constructor initializes the GPU memory
+    cudaMallocManaged(&hashmap, sizeof(Hashmap<int, int>));
+    new (hashmap) Hashmap<int, int>(capacity);
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        std::cerr << "CUDA error malloc memcpy: " << cudaGetErrorString(err) << std::endl;
+        // handle error
+    }
     // ...
 
     // Start benchmark
@@ -70,7 +72,7 @@ int main()
     cudaEventRecord(start);
 
     // Launch kernel
-    testIntInsert<<<gridSize, blockSize>>>(d_keys, d_values, numElements, hashmap);
+    testIntInsert<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
     cudaDeviceSynchronize(); // Wait for the kernel to finish
     err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -87,12 +89,24 @@ int main()
 
     std::cout << "Insertion time: " << milliseconds << " ms\n";
 
+    // Check if all elements were inserted
+    thrust::device_vector<int> d_results(d_keys.size());
+    hashmap->getValues(d_keys, d_results);
+    thrust::host_vector<int> h_results = d_results;
+
+    bool areEqual = thrust::equal(h_results.begin(), h_results.end(), values.begin());
+    if (areEqual)
+    {
+        std::cout << "Success: d_results and h_values are the same." << std::endl;
+    }
+    else
+    {
+        std::cout << "Error: d_results and h_values differ." << std::endl;
+    }
+
     // Cleanup
-    cudaFree(d_keys);
-    cudaFree(d_values);
-    delete hashmap;
-    delete[] keys;
-    delete[] values;
+    hashmap->~Hashmap();
+    cudaFree(hashmap);
 
     return 0;
 }
