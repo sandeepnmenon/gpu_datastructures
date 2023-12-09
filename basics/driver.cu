@@ -100,7 +100,8 @@ int main(int argc, char **argv)
     thrust::device_vector<int> d_values = h_values;
 
     // Create and initialize hashmap
-    int capacity = 2 * numElements; // Or any other size you prefer
+    auto constexpr load_factor = 0.5;
+    std::size_t const capacity = std::ceil(numElements / load_factor);
 
     Hashmap<int, int> *hashmap; // Assuming constructor initializes the GPU memory
     cudaMallocManaged(&hashmap, sizeof(Hashmap<int, int>));
@@ -115,7 +116,7 @@ int main(int argc, char **argv)
     if (defaultInsert)
         benchmarkKernel([&]()
                         { insertionBenchmarkFunc(hashmap, d_keys, d_values); },
-                        "Insertion");
+                        "non-CG Insertion");
 
     if (cooperativeGroupsInsert)
         benchmarkKernel([&]()
@@ -129,7 +130,10 @@ int main(int argc, char **argv)
                         { searchBenchMarkFunc(hashmap, d_keys, d_results); },
                         "Search");
 
-        checkResults(d_results, h_values);
+        if (!checkResults(d_results, h_values))
+        {
+            // hashmap->printAllBucketValues();
+        }
     }
 
     // Cleanup
