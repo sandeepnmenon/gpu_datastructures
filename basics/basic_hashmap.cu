@@ -143,6 +143,8 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
     // get initial probing position from the hash value of the key
     auto i = (hash_custom(k) + group.thread_rank()) % capacity;
     auto state = probing_state::CONTINUE;
+    printf("inserting key:%d value:%d i: %d\n", k, v, i);
+
     while (true)
     {
         // load the contents of the bucket at the current probe position of each rank in a coalesced manner
@@ -157,6 +159,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
         {
             // elect a candidate rank (here: thread with lowest rank in mask)
             auto const candidate = __ffs(empty_mask) - 1;
+            printf("candidate: %d, rank: %d key: %d value: %d i: %d\n", candidate, group.thread_rank(), k, v, i);
             if (group.thread_rank() == candidate)
             {
                 // attempt atomically swapping the input Pair into the bucket
@@ -165,17 +168,20 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
                     old_kv, desired, std::memory_order_relaxed);
                 if (success)
                 {
+                    printf("inserted key:%d value:%d i: %d\n", k, v, i);
                     // insertion went successful
                     state = probing_state::SUCCESS;
                 }
                 else if (old_kv.first == k)
                 {
+                    printf("duplicate key:%d value:%d i: %d\n", k, v, i);
                     // else, re-check if a duplicate key has been inserted at the current probing position
                     state = probing_state::DUPLICATE;
                 }
             }
             // broadcast the insertion result from the candidate rank to all other ranks
             auto const candidate_state = group.shfl(state, candidate);
+            printf("candidate_state: %d key: %d value: %d i: %d\n", candidate_state, k, v, i);
             if (candidate_state == probing_state::SUCCESS)
                 return true;
             if (candidate_state == probing_state::DUPLICATE)
@@ -183,6 +189,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
         }
         else
         {
+            printf("continuing key:%d value:%d i: %d\n", k, v, i);
             // else, move to the next (linear) probing window
             i = (i + group.size()) % capacity;
         }

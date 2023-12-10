@@ -20,7 +20,10 @@ __global__ void testIntInsertCG(const int *keys, const int *values, const size_t
     if (idx < numElements)
     {
         auto group = cg::tiled_partition<4>(cg::this_thread_block());
-        hashmap->insert(group, keys[idx], values[idx]);
+        if (!hashmap->insert(group, keys[idx], values[idx]))
+        {
+            printf("Insertion failed for key[%d] %d\n", idx, keys[idx]);
+        }
     }
 }
 
@@ -88,7 +91,7 @@ int main(int argc, char **argv)
             std::cerr << "Unknown option: " << char(opt) << std::endl;
 
     // Initialize data
-    const size_t numElements = 1000000; // Adjust as needed
+    const size_t numElements = 10; // Adjust as needed
     thrust::host_vector<int> h_keys(numElements), h_values(numElements);
 
     // Fill keys and values with test data
