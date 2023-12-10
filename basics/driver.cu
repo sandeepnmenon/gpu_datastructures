@@ -5,9 +5,9 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <cooperative_groups.h>
+#include <thrust/sequence.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/sequence.h>
 
 #include "basic_hashmap.cu"
 #include "utils.cuh"
@@ -77,7 +77,9 @@ void setupActions()
 }
 
 int main(int argc, char **argv)
-{
+{   
+    cudaSetDevice(2);
+
     setupActions();
 
     int opt;

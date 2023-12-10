@@ -2,6 +2,7 @@
 #include <thrust/host_vector.h>
 #include <thrust/random.h>
 #include <thrust/shuffle.h>
+#include <thrust/sequence.h>
 
 void initializeData(thrust::host_vector<int> &array, size_t numElements)
 {
