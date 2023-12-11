@@ -1,4 +1,3 @@
-
 #include <memory>
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
@@ -73,7 +72,22 @@ public:
 
     Bucket<Key, Value> *buckets;
     size_t capacity{};
-    // Other private members and methods
+
+    void printAllBucketValues()
+    {
+        printf("Printing all %lu: bucket values\n", capacity);
+        Bucket<Key, Value> *host_buckets;
+        cudaMallocHost(&host_buckets, capacity * sizeof(Bucket<Key, Value>)); // Allocate pinned host memory
+        cudaMemcpy(host_buckets, this->buckets, capacity * sizeof(Bucket<Key, Value>), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+        for (int i = 0; i < capacity; i++)
+        {
+            auto old_kv = host_buckets[i];
+            printf("key:%d value:%d i: %d\n", old_kv.key, old_kv.value, i);
+        }
+        printf("Over...\n");
+        cudaFreeHost(host_buckets); // Free the allocated host memory
+    }
 };
 
 template <typename Key, typename Value>
@@ -129,6 +143,8 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
     // get initial probing position from the hash value of the key
     auto i = (hash_custom(k) + group.thread_rank()) % capacity;
     auto state = probing_state::CONTINUE;
+    printf("inserting key:%d value:%d i: %d\n", k, v, i);
+
     while (true)
     {
         // load the contents of the bucket at the current probe position of each rank in a coalesced manner
@@ -143,6 +159,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
         {
             // elect a candidate rank (here: thread with lowest rank in mask)
             auto const candidate = __ffs(empty_mask) - 1;
+            printf("candidate: %d, rank: %d key: %d value: %d i: %d\n", candidate, group.thread_rank(), k, v, i);
             if (group.thread_rank() == candidate)
             {
                 // attempt atomically swapping the input Pair into the bucket
@@ -151,17 +168,20 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
                     old_kv, desired, std::memory_order_relaxed);
                 if (success)
                 {
+                    printf("inserted key:%d value:%d i: %d\n", k, v, i);
                     // insertion went successful
                     state = probing_state::SUCCESS;
                 }
                 else if (old_kv.first == k)
                 {
+                    printf("duplicate key:%d value:%d i: %d\n", k, v, i);
                     // else, re-check if a duplicate key has been inserted at the current probing position
                     state = probing_state::DUPLICATE;
                 }
             }
             // broadcast the insertion result from the candidate rank to all other ranks
             auto const candidate_state = group.shfl(state, candidate);
+            printf("candidate_state: %d key: %d value: %d i: %d\n", candidate_state, k, v, i);
             if (candidate_state == probing_state::SUCCESS)
                 return true;
             if (candidate_state == probing_state::DUPLICATE)
@@ -169,6 +189,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
         }
         else
         {
+            printf("continuing key:%d value:%d i: %d\n", k, v, i);
             // else, move to the next (linear) probing window
             i = (i + group.size()) % capacity;
         }
@@ -190,33 +211,9 @@ __device__ Value Hashmap<Key, Value>::find(Key k)
         else if (old_kv.first == empty_sentinel)
         {
             // Key not found
-            return Value{};
+            return empty_sentinel;
         }
         i = ++i % capacity;
-    }
-}
-
-template <typename Key, typename Value>
-__device__ bool Hashmap<Key, Value>::erase(cg::thread_block_tile<4> group, Key k)
-{
-    auto i = (hash_custom(k) + group.thread_rank()) % capacity;
-    while (true)
-    {
-        auto old_kv = buckets[i].load(std::memory_order_relaxed);
-        if (group.any(old_kv.first == k))
-        {
-            // Found the key, attempt to remove it
-            Pair<Key, Value> empty(empty_sentinel, Value{});
-            bool const success = buckets[i].compare_exchange_strong(
-                old_kv, empty, std::memory_order_relaxed);
-            return success;
-        }
-        else if (old_kv.first == empty_sentinel)
-        {
-            // Key not found
-            return false;
-        }
-        i = (i + group.size()) % capacity;
     }
 }
 
