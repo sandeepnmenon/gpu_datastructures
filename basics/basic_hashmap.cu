@@ -68,7 +68,7 @@ public:
 
     __device__ Value find(const Key k) const;
 
-    __device__ Value find(cg::thread_block_tile<4> group, const Key k) const;
+    __device__ void find(cg::thread_block_tile<4> group, const Key k, Value *out) const;
 
     Bucket<Key, Value> *buckets;
     size_t capacity{};
@@ -223,22 +223,30 @@ __device__ Value Hashmap<Key, Value>::find(const Key k) const
 }
 
 template <typename Key, typename Value>
-__device__ Value Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, const Key k) const
+__device__ void Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, const Key k, Value *out) const
 {
     auto i = (hash_custom(k) + group.thread_rank()) % capacity;
+    auto thread_rank = group.thread_rank();
     while (true)
     {
         auto old_kv = buckets[i].load(std::memory_order_relaxed);
-        if (group.any(old_kv.first == k))
+        auto found_mask = group.ballot(old_kv.first == k);
+        if (found_mask)
         {
-            // Found the key, return the value
-            return old_kv.second;
+            if (old_kv.first == k)
+            {
+                *out = old_kv.second;
+                return;
+            }
+            return;
         }
-        else if (group.all(old_kv.first != k))
+        else if (group.all(old_kv.first == empty_sentinel))
         {
-            // Key not found
-            return empty_sentinel;
+            // If all threads in the group find an empty sentinel, the key is not present
+            *out = empty_sentinel;
+            return;
         }
+
         i = (i + group.size()) % capacity;
     }
 }

@@ -83,7 +83,7 @@ __global__ void findKernelCG(const Hashmap<Key, Value> *hashmap, const Key *keys
     if (idx < numValues)
     {
         auto group = cg::tiled_partition<4>(cg::this_thread_block());
-        results[idx] = hashmap->find(group, keys[idx]);
+        hashmap->find(group, keys[idx], &results[idx]);
     }
 }
 
@@ -96,8 +96,12 @@ __global__ void findKernelCG_2(const Hashmap<Key, Value> *hashmap, const Key *ke
     for (int idx = threadId; idx < numValues; idx += totalThreads)
     {
         auto group = cg::tiled_partition<4>(cg::this_thread_block());
-        results[idx] = hashmap->find(group, keys[idx]);
+        hashmap->find(group, keys[idx], &results[idx]);
     }
 }
 
+// Explicit instantiation because these are templated functions
 template __global__ void findKernel<int, int>(const Hashmap<int, int> *hashmap, const int *keys, int *results, int numValues);
+template __global__ void findKernel_2<int, int>(const Hashmap<int, int> *hashmap, const int *keys, int *results, int numValues);
+template __global__ void findKernelCG<int, int>(const Hashmap<int, int> *hashmap, const int *keys, int *results, int numValues, size_t cg_size);
+template __global__ void findKernelCG_2<int, int>(const Hashmap<int, int> *hashmap, const int *keys, int *results, int numValues, size_t cg_size);

@@ -79,21 +79,6 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
     cudaDeviceSynchronize();
 }
 
-template <typename Key, typename Value>
-void searchBenchMarkFunc(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
-{
-    int numElements = keys.size();
-    int blockSize = config.threads;
-    int gridSize = config.blocks;
-
-    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
-    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
-    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
-
-    findKernel<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
-    cudaDeviceSynchronize();
-}
-
 void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, const thrust::device_vector<int> &d_values)
 {
     // Define default grid and block sizes
@@ -111,6 +96,70 @@ void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device
     cudaDeviceSynchronize();
 }
 
+template <typename Key, typename Value>
+void searchBenchMarkFunc(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+{
+    int numElements = keys.size();
+    int blockSize = config.threads;
+    int gridSize = (numElements + blockSize - 1) / blockSize;
+
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
+
+    findKernel<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
+    cudaDeviceSynchronize();
+}
+
+template <typename Key, typename Value>
+void searchBenchMarkFunc_2(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+{
+    int numElements = keys.size();
+    int blockSize = config.threads;
+    int gridSize = config.blocks;
+
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
+
+    findKernel_2<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
+    cudaDeviceSynchronize();
+}
+
+template <typename Key, typename Value>
+void searchBenchMarkCGFunc(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+{
+    int numElements = keys.size();
+    int blockSize = config.threads;
+    int gridSize = (numElements + blockSize - 1) / blockSize;
+
+    assert(blockSize >= 4); // make sure there are at least 4 threads for the cooperative insert
+
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
+
+    findKernelCG<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size(), config.cg_size);
+    cudaDeviceSynchronize();
+}
+
+template <typename Key, typename Value>
+void searchBenchMarkCGFunc_2(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+{
+    int numElements = keys.size();
+    int blockSize = config.threads;
+    int gridSize = config.blocks;
+
+    assert(blockSize >= 4); // make sure there are at least 4 threads for the cooperative insert
+
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
+
+    findKernelCG_2<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size(), config.cg_size);
+    cudaDeviceSynchronize();
+}
+
 void setupActions()
 {
     actions['i'] = [](const char *)
@@ -120,7 +169,7 @@ void setupActions()
     actions['s'] = [](const char *)
     { config.defaultSearch = true; std::cout << "Default search\n"; };
     actions['S'] = [](const char *)
-    { config.defaultSearch = true; std::cout << "Cooperative groups search\n"; };
+    { config.cooperativeGroupsSearch = true; std::cout << "Cooperative groups search\n"; };
     actions['n'] = [](const char *arg)
     { config.numElements = std::stoul(arg); };
     actions['l'] = [](const char *arg)
@@ -207,7 +256,7 @@ int main(int argc, char **argv)
     {
         thrust::device_vector<int> d_results(d_keys.size());
         benchmarkKernel([&]()
-                        { searchBenchMarkFunc(hashmap, d_keys, d_results); },
+                        { searchBenchMarkFunc_2(hashmap, d_keys, d_results); },
                         "Search");
 
         if (!checkResults(d_results, h_values))
@@ -220,8 +269,8 @@ int main(int argc, char **argv)
     {
         thrust::device_vector<int> d_results(d_keys.size());
         benchmarkKernel([&]()
-                        { searchBenchMarkFunc(hashmap, d_keys, d_results); },
-                        "Search");
+                        { searchBenchMarkCGFunc_2(hashmap, d_keys, d_results); },
+                        "Search CG");
 
         if (!checkResults(d_results, h_values))
         {
