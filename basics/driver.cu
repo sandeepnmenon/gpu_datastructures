@@ -214,16 +214,21 @@ int main(int argc, char **argv)
     }
 
     if (config.defaultInsert)
+    {
+        hashmap->initialize();
         benchmarkKernel([&]()
                         { insertionBenchmarkFunc_2(hashmap, d_keys, d_values); },
-                         "non-CG Insertion");
-        
+                        "non-CG Insertion");
+    }
 
     if (config.cooperativeGroupsInsert)
+    {
+        hashmap->initialize();
         benchmarkKernel([&]()
                         { std::cout << std::setw(25) << "Cooperative group size:" << config.cg_size << "\n";
                           insertionBenchmarkCGFunc_2(hashmap, d_keys, d_values); },
                         "Insertion CG");
+    }
 
     if (config.defaultSearch)
     {

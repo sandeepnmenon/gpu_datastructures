@@ -88,13 +88,18 @@ public:
         printf("Over...\n");
         cudaFreeHost(host_buckets); // Free the allocated host memory
     }
+
+    void initialize()
+    {
+        cudaMemset(buckets, empty_sentinel, capacity * sizeof(Bucket<Key, Value>)); // Initialize to default values
+    }
 };
 
 template <typename Key, typename Value>
 Hashmap<Key, Value>::Hashmap(size_t cap) : capacity{cap}, buckets(nullptr)
 {
     cudaMalloc(&buckets, capacity * sizeof(Bucket<Key, Value>));
-    cudaMemset(buckets, empty_sentinel, capacity * sizeof(Bucket<Key, Value>)); // Initialize to default values
+    initialize();
 }
 
 template <typename Key, typename Value>
