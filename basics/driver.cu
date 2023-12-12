@@ -10,6 +10,7 @@
 #include <thrust/host_vector.h>
 #include <cassert>
 
+#include "config.cuh"
 #include "basic_hashmap.cu"
 #include "kernels.cuh"
 #include "utils.cuh"
@@ -25,7 +26,6 @@ struct Config
     size_t threads = 1;
     size_t blocks = 1;
     size_t numElements = 1;
-    static constexpr size_t cg_size = 4;
     float load = 1.0f;
 
 } config;
@@ -67,7 +67,7 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
     // Define default grid and block sizes
     int numElements = config.numElements;
     int blockSize = config.threads;
-    int gridSize = (numElements * config.cg_size + blockSize - 1) / blockSize;
+    int gridSize = (numElements * CG_SIZE + blockSize - 1) / blockSize;
 
     assert(blockSize >= 4); // make sure there are at least 4 threads for the cooperative insert
 
@@ -75,7 +75,7 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
-    testIntInsertCG<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap, config.cg_size);
+    testIntInsertCG<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
     cudaDeviceSynchronize();
 }
 
@@ -92,7 +92,7 @@ void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
-    testIntInsertCG_2<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap, config.cg_size);
+    testIntInsertCG_2<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
     cudaDeviceSynchronize();
 }
 
@@ -139,7 +139,7 @@ void searchBenchMarkCGFunc(const Hashmap<int, int> *hashmap, const thrust::devic
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
-    findKernelCG<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size(), config.cg_size);
+    findKernelCG<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
     cudaDeviceSynchronize();
 }
 
@@ -156,7 +156,7 @@ void searchBenchMarkCGFunc_2(const Hashmap<int, int> *hashmap, const thrust::dev
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
-    findKernelCG_2<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size(), config.cg_size);
+    findKernelCG_2<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
     cudaDeviceSynchronize();
 }
 
@@ -247,7 +247,7 @@ int main(int argc, char **argv)
     {
         hashmap->initialize();
         benchmarkKernel([&]()
-                        { std::cout << std::setw(25) << "Cooperative group size:" << config.cg_size << "\n";
+                        { std::cout << std::setw(25) << "Cooperative group size:" << CG_SIZE << "\n";
                           insertionBenchmarkCGFunc_2(hashmap, d_keys, d_values); },
                         "Insertion CG");
     }

@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
 #include <cooperative_groups.h>
+#include "config.cuh"
 namespace cg = cooperative_groups;
 
 enum class probing_state
@@ -64,11 +65,11 @@ public:
 
     __device__ bool insert(const Key k, const Value v);
 
-    __device__ bool insert(cg::thread_block_tile<4> group, const Key k, const Value v);
+    __device__ bool insert(cg::thread_block_tile<CG_SIZE> group, const Key k, const Value v);
 
     __device__ Value find(const Key k) const;
 
-    __device__ void find(cg::thread_block_tile<4> group, const Key k, Value *out) const;
+    __device__ void find(cg::thread_block_tile<CG_SIZE> group, const Key k, Value *out) const;
 
     Bucket<Key, Value> *buckets;
     size_t capacity{};
@@ -143,7 +144,7 @@ __device__ bool Hashmap<Key, Value>::insert(Key k, Value v)
 }
 
 template <typename Key, typename Value>
-__device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key k, Value v)
+__device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<CG_SIZE> group, Key k, Value v)
 {
     // get initial probing position from the hash value of the key
     auto i = (hash_custom(k) + group.thread_rank()) % capacity;
@@ -223,7 +224,7 @@ __device__ Value Hashmap<Key, Value>::find(const Key k) const
 }
 
 template <typename Key, typename Value>
-__device__ void Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, const Key k, Value *out) const
+__device__ void Hashmap<Key, Value>::find(cg::thread_block_tile<CG_SIZE> group, const Key k, Value *out) const
 {
     auto i = (hash_custom(k) + group.thread_rank()) % capacity;
     auto thread_rank = group.thread_rank();
