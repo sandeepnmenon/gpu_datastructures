@@ -16,7 +16,8 @@ namespace cg = cooperative_groups;
 
 __global__ void testIntInsertCG(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int idx = (threadIdx.x + blockIdx.x * blockDim.x) / 4;
+    //printf("idx %d\n", idx);
     if (idx < numElements)
     {
         auto group = cg::tiled_partition<4>(cg::this_thread_block());
@@ -52,8 +53,8 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
     // Define grid and block sizes
     int numElements = d_keys.size();
     int blockSize = 256;
-    int gridSize = (numElements + blockSize - 1) / blockSize;
-
+    int gridSize = (numElements * 4 + blockSize - 1) / blockSize;
+    printf("gridSize %d\n", gridSize);
     testIntInsertCG<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
     cudaDeviceSynchronize();
 }
@@ -93,7 +94,7 @@ int main(int argc, char **argv)
             std::cerr << "Unknown option: " << char(opt) << std::endl;
 
     // Initialize data
-    const size_t numElements = 10; // Adjust as needed
+    const size_t numElements = 10000; // Adjust as needed
     thrust::host_vector<int> h_keys(numElements), h_values(numElements);
 
     // Fill keys and values with test data
@@ -105,7 +106,7 @@ int main(int argc, char **argv)
     thrust::device_vector<int> d_values = h_values;
 
     // Create and initialize hashmap
-    auto constexpr load_factor = 0.5;
+    auto constexpr load_factor = 1.0;
     std::size_t const capacity = std::ceil(numElements / load_factor);
 
     Hashmap<int, int> *hashmap; // Assuming constructor initializes the GPU memory
