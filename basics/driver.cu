@@ -5,16 +5,14 @@
 #include <functional>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
-#include <cooperative_groups.h>
 #include <thrust/sequence.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <cassert>
 
 #include "basic_hashmap.cu"
+#include "kernels.cuh"
 #include "utils.cuh"
-
-namespace cg = cooperative_groups;
 
 struct Config
 {
@@ -22,7 +20,7 @@ struct Config
     bool defaultInsert = false;
     bool cooperativeGroupsInsert = false;
     bool defaultSearch = false;
-    size_t device = 2;
+    size_t device = 0;
     size_t threads = 1;
     size_t blocks = 1;
     size_t numElements = 1;
@@ -32,55 +30,6 @@ struct Config
 } config;
 
 std::map<char, std::function<void(const char *)>> actions;
-
-__global__ void testIntInsertCG(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap, size_t cg_size)
-{
-    int idx = (threadIdx.x + blockIdx.x * blockDim.x) / cg_size;
-    if (idx < numElements)
-    {
-        auto group = cg::tiled_partition<4>(cg::this_thread_block());
-        if (!hashmap->insert(group, keys[idx], values[idx]))
-        {
-            printf("Insertion failed for key[%d] %d\n", idx, keys[idx]);
-        }
-    }
-}
-
-__global__ void testIntInsertCG_2(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap, size_t cg_size)
-{
-    int threadId = (threadIdx.x + blockIdx.x * blockDim.x) / cg_size;
-    int totalThreads = (gridDim.x * blockDim.x) / cg_size; // Total number of active threads
-
-    for (int idx = threadId; idx < numElements; idx += totalThreads)
-    {
-        auto group = cg::tiled_partition<4>(cg::this_thread_block());
-        if (!hashmap->insert(group, keys[idx], values[idx]))
-        {
-            printf("Insertion failed for key[%d] %d\n", idx, keys[idx]);
-        }
-    }
-}
-
-__global__ void testIntInsert(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap)
-{
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    if (idx < numElements)
-    {
-        hashmap->insert(keys[idx], values[idx]);
-    }
-}
-
-__global__ void testIntInsert_2(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap)
-{
-    int threadId = threadIdx.x + blockIdx.x * blockDim.x; // unique thread id
-    int totalThreads = gridDim.x * blockDim.x;            // Total number of active threads
-
-    // Loop over elements. Each thread handles multiple insertions.
-    for (int idx = threadId; idx < numElements; idx += totalThreads)
-    {
-        hashmap->insert(keys[idx], values[idx]);
-    }
-}
 
 void insertionBenchmarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, const thrust::device_vector<int> &d_values)
 {
@@ -129,6 +78,14 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
     cudaDeviceSynchronize();
 }
 
+template <typename Key, typename Value>
+void getValues(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+{
+    int blockSize = 256;
+    int gridSize = (keys.size() + blockSize - 1) / blockSize;
+    findKernel<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
+}
+
 void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, const thrust::device_vector<int> &d_values)
 {
     // Define default grid and block sizes
@@ -146,9 +103,9 @@ void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device
     cudaDeviceSynchronize();
 }
 
-void searchBenchMarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, thrust::device_vector<int> &d_results)
+void searchBenchMarkFunc(const Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, thrust::device_vector<int> &d_results)
 {
-    hashmap->getValues(d_keys, d_results);
+    getValues<int, int>(hashmap, d_keys, d_results);
     cudaDeviceSynchronize();
 }
 

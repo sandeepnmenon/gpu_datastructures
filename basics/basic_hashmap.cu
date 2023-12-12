@@ -1,3 +1,5 @@
+#ifndef HASHMAP_H
+#define HASHMAP_H
 #include <memory>
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
@@ -60,15 +62,13 @@ public:
     Hashmap(size_t capacity);
     ~Hashmap();
 
-    __device__ bool insert(Key k, Value v);
+    __device__ bool insert(const Key k, const Value v);
 
-    __device__ bool insert(cg::thread_block_tile<4> group, Key k, Value v);
+    __device__ bool insert(cg::thread_block_tile<4> group, const Key k, const Value v);
 
-    __device__ Value find(Key k);
+    __device__ Value find(const Key k) const;
 
-    __device__ bool erase(cg::thread_block_tile<4> group, Key k);
-
-    void getValues(const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results);
+    __device__ Value find(cg::thread_block_tile<4> group, const Key k) const;
 
     Bucket<Key, Value> *buckets;
     size_t capacity{};
@@ -202,7 +202,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
 }
 
 template <typename Key, typename Value>
-__device__ Value Hashmap<Key, Value>::find(Key k)
+__device__ Value Hashmap<Key, Value>::find(const Key k) const
 {
     auto i = hash_custom(k) % capacity;
     while (true)
@@ -223,19 +223,24 @@ __device__ Value Hashmap<Key, Value>::find(Key k)
 }
 
 template <typename Key, typename Value>
-__global__ void findKernel(Hashmap<Key, Value> *hashmap, const Key *keys, Value *results, int numValues)
+__device__ Value Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, const Key k) const
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    if (idx < numValues)
+    auto i = (hash_custom(k) + group.thread_rank()) % capacity;
+    while (true)
     {
-        results[idx] = hashmap->find(keys[idx]);
+        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        if (group.any(old_kv.first == k))
+        {
+            // Found the key, return the value
+            return old_kv.second;
+        }
+        else if (group.all(old_kv.first != k))
+        {
+            // Key not found
+            return empty_sentinel;
+        }
+        i = (i + group.size()) % capacity;
     }
 }
 
-template <typename Key, typename Value>
-void Hashmap<Key, Value>::getValues(const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
-{
-    int blockSize = 256;
-    int gridSize = (keys.size() + blockSize - 1) / blockSize;
-    findKernel<<<gridSize, blockSize>>>(this, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
-}
+#endif // HASHMAP_H
