@@ -1,3 +1,5 @@
+#ifndef HASHMAP_H
+#define HASHMAP_H
 #include <memory>
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
@@ -60,15 +62,13 @@ public:
     Hashmap(size_t capacity);
     ~Hashmap();
 
-    __device__ bool insert(Key k, Value v);
+    __device__ bool insert(const Key k, const Value v);
 
-    __device__ bool insert(cg::thread_block_tile<4> group, Key k, Value v);
+    __device__ bool insert(cg::thread_block_tile<4> group, const Key k, const Value v);
 
-    __device__ Value find(Key k);
+    __device__ Value find(const Key k) const;
 
-    __device__ bool erase(cg::thread_block_tile<4> group, Key k);
-
-    void getValues(const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results);
+    __device__ void find(cg::thread_block_tile<4> group, const Key k, Value *out) const;
 
     Bucket<Key, Value> *buckets;
     size_t capacity{};
@@ -88,13 +88,18 @@ public:
         printf("Over...\n");
         cudaFreeHost(host_buckets); // Free the allocated host memory
     }
+
+    void initialize()
+    {
+        cudaMemset(buckets, empty_sentinel, capacity * sizeof(Bucket<Key, Value>)); // Initialize to default values
+    }
 };
 
 template <typename Key, typename Value>
 Hashmap<Key, Value>::Hashmap(size_t cap) : capacity{cap}, buckets(nullptr)
 {
     cudaMalloc(&buckets, capacity * sizeof(Bucket<Key, Value>));
-    cudaMemset(buckets, empty_sentinel, capacity * sizeof(Bucket<Key, Value>)); // Initialize to default values
+    initialize();
 }
 
 template <typename Key, typename Value>
@@ -143,7 +148,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
     // get initial probing position from the hash value of the key
     auto i = (hash_custom(k) + group.thread_rank()) % capacity;
     auto state = probing_state::CONTINUE;
-    //printf("inserting key:%d value:%d i: %d\n", k, v, i);
+    // printf("inserting key:%d value:%d i: %d\n", k, v, i);
 
     while (true)
     {
@@ -159,7 +164,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
         {
             // elect a candidate rank (here: thread with lowest rank in mask)
             auto const candidate = __ffs(empty_mask) - 1;
-            //printf("candidate: %d, rank: %d key: %d value: %d i: %d\n", candidate, group.thread_rank(), k, v, i);
+            // printf("candidate: %d, rank: %d key: %d value: %d i: %d\n", candidate, group.thread_rank(), k, v, i);
             if (group.thread_rank() == candidate)
             {
                 // attempt atomically swapping the input Pair into the bucket
@@ -168,20 +173,20 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
                     old_kv, desired, std::memory_order_relaxed);
                 if (success)
                 {
-                    //printf("inserted key:%d value:%d i: %d\n", k, v, i);
-                    // insertion went successful
+                    // printf("inserted key:%d value:%d i: %d\n", k, v, i);
+                    //  insertion went successful
                     state = probing_state::SUCCESS;
                 }
                 else if (old_kv.first == k)
                 {
-                    //printf("duplicate key:%d value:%d i: %d\n", k, v, i);
-                    // else, re-check if a duplicate key has been inserted at the current probing position
+                    // printf("duplicate key:%d value:%d i: %d\n", k, v, i);
+                    //  else, re-check if a duplicate key has been inserted at the current probing position
                     state = probing_state::DUPLICATE;
                 }
             }
             // broadcast the insertion result from the candidate rank to all other ranks
             auto const candidate_state = group.shfl(state, candidate);
-            //printf("candidate_state: %d key: %d value: %d i: %d\n", candidate_state, k, v, i);
+            // printf("candidate_state: %d key: %d value: %d i: %d\n", candidate_state, k, v, i);
             if (candidate_state == probing_state::SUCCESS)
                 return true;
             if (candidate_state == probing_state::DUPLICATE)
@@ -189,15 +194,15 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<4> group, Key 
         }
         else
         {
-            //printf("continuing key:%d value:%d i: %d\n", k, v, i);
-            // else, move to the next (linear) probing window
+            // printf("continuing key:%d value:%d i: %d\n", k, v, i);
+            //  else, move to the next (linear) probing window
             i = (i + group.size()) % capacity;
         }
     }
 }
 
 template <typename Key, typename Value>
-__device__ Value Hashmap<Key, Value>::find(Key k)
+__device__ Value Hashmap<Key, Value>::find(const Key k) const
 {
     auto i = hash_custom(k) % capacity;
     while (true)
@@ -218,19 +223,32 @@ __device__ Value Hashmap<Key, Value>::find(Key k)
 }
 
 template <typename Key, typename Value>
-__global__ void findKernel(Hashmap<Key, Value> *hashmap, const Key *keys, Value *results, int numValues)
+__device__ void Hashmap<Key, Value>::find(cg::thread_block_tile<4> group, const Key k, Value *out) const
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    if (idx < numValues)
+    auto i = (hash_custom(k) + group.thread_rank()) % capacity;
+    auto thread_rank = group.thread_rank();
+    while (true)
     {
-        results[idx] = hashmap->find(keys[idx]);
+        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        auto found_mask = group.ballot(old_kv.first == k);
+        if (found_mask)
+        {
+            if (old_kv.first == k)
+            {
+                *out = old_kv.second;
+                return;
+            }
+            return;
+        }
+        else if (group.all(old_kv.first == empty_sentinel))
+        {
+            // If all threads in the group find an empty sentinel, the key is not present
+            *out = empty_sentinel;
+            return;
+        }
+
+        i = (i + group.size()) % capacity;
     }
 }
 
-template <typename Key, typename Value>
-void Hashmap<Key, Value>::getValues(const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
-{
-    int blockSize = 256;
-    int gridSize = (keys.size() + blockSize - 1) / blockSize;
-    findKernel<<<gridSize, blockSize>>>(this, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
-}
+#endif // HASHMAP_H
