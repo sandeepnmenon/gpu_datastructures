@@ -47,8 +47,10 @@ __global__ void testIntInsertCG(const int *keys, const int *values, const size_t
 
 __global__ void testIntInsertCG_2(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap, size_t cg_size)
 {
-    int idx = (threadIdx.x + blockIdx.x * blockDim.x) / cg_size;
-    if (idx < numElements)
+    int threadId = (threadIdx.x + blockIdx.x * blockDim.x) / cg_size;
+    int totalThreads = (gridDim.x * blockDim.x) / cg_size; // Total number of active threads
+
+    for (int idx = threadId; idx < numElements; idx += totalThreads)
     {
         auto group = cg::tiled_partition<4>(cg::this_thread_block());
         if (!hashmap->insert(group, keys[idx], values[idx]))
@@ -86,8 +88,8 @@ void insertionBenchmarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vec
     int blockSize = config.threads;
     int gridSize = (numElements + blockSize - 1) / blockSize;
 
-    std::cout << std::setw(25) << "Threads per block:" << config.threads << "\n";
-    std::cout << std::setw(25) << "Number of blocks:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
 
     testIntInsert<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
@@ -101,8 +103,8 @@ void insertionBenchmarkFunc_2(Hashmap<int, int> *hashmap, const thrust::device_v
     int blockSize = config.threads;
     int gridSize = config.blocks;
 
-    std::cout << std::setw(25) << "Threads per block:" << config.threads << "\n";
-    std::cout << std::setw(25) << "Number of blocks:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
 
     testIntInsert_2<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
@@ -118,8 +120,8 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
 
     assert(blockSize >= 4); // make sure there are at least 4 threads for the cooperative insert
 
-    std::cout << std::setw(25) << "Threads per block:" << config.threads << "\n";
-    std::cout << std::setw(25) << "Number of blocks:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
 
     testIntInsertCG<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap, config.cg_size);
@@ -135,8 +137,8 @@ void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device
 
     assert(blockSize >= 4); // make sure there are at least 4 threads for the cooperative insert
 
-    std::cout << std::setw(25) << "Threads per block:" << config.threads << "\n";
-    std::cout << std::setw(25) << "Number of blocks:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
     std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
 
     testIntInsertCG_2<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap, config.cg_size);
