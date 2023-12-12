@@ -16,7 +16,8 @@
 
 namespace cg = cooperative_groups;
 
-struct Config {
+struct Config
+{
 
     bool defaultInsert = false;
     bool cooperativeGroupsInsert = false;
@@ -30,7 +31,7 @@ struct Config {
 
 } config;
 
-std::map<char, std::function<void(const char*)>> actions;
+std::map<char, std::function<void(const char *)>> actions;
 
 __global__ void testIntInsertCG(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap, size_t cg_size)
 {
@@ -72,7 +73,7 @@ __global__ void testIntInsert(const int *keys, const int *values, const size_t n
 __global__ void testIntInsert_2(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap)
 {
     int threadId = threadIdx.x + blockIdx.x * blockDim.x; // unique thread id
-    int totalThreads = gridDim.x * blockDim.x; // Total number of active threads
+    int totalThreads = gridDim.x * blockDim.x;            // Total number of active threads
 
     // Loop over elements. Each thread handles multiple insertions.
     for (int idx = threadId; idx < numElements; idx += totalThreads)
@@ -90,7 +91,7 @@ void insertionBenchmarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vec
 
     std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
-    std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
     testIntInsert<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
     cudaDeviceSynchronize();
@@ -105,7 +106,7 @@ void insertionBenchmarkFunc_2(Hashmap<int, int> *hashmap, const thrust::device_v
 
     std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
-    std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
     testIntInsert_2<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap);
     cudaDeviceSynchronize();
@@ -122,7 +123,7 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
 
     std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
-    std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
     testIntInsertCG<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap, config.cg_size);
     cudaDeviceSynchronize();
@@ -139,7 +140,7 @@ void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device
 
     std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
     std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
-    std::cout << std::setw(25) << "Total number of threads:" <<  blockSize * gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
 
     testIntInsertCG_2<<<gridSize, blockSize>>>(thrust::raw_pointer_cast(d_keys.data()), thrust::raw_pointer_cast(d_values.data()), numElements, hashmap, config.cg_size);
     cudaDeviceSynchronize();
@@ -151,22 +152,32 @@ void searchBenchMarkFunc(Hashmap<int, int> *hashmap, const thrust::device_vector
     cudaDeviceSynchronize();
 }
 
-void setupActions() {
-    actions['d'] = [](const char*) { config.defaultInsert = true; std::cout << "Default insert\n"; };
-    actions['c'] = [](const char*) { config.cooperativeGroupsInsert = true; std::cout << "Cooperative groups insert\n"; };
-    actions['s'] = [](const char*) { config.defaultSearch = true; std::cout << "Default search\n"; };
-    actions['n'] = [](const char* arg) { config.numElements = std::stoul(arg); };
-    actions['l'] = [](const char* arg) { config.load = std::stof(arg); };
-    actions['t'] = [](const char* arg) { config.threads = std::stoul(arg); };
-    actions['b'] = [](const char* arg) { config.blocks = std::stoul(arg); };
-    actions['g'] = [](const char* arg) { config.device = std::stoul(arg); };
+void setupActions()
+{
+    actions['d'] = [](const char *)
+    { config.defaultInsert = true; std::cout << "Default insert\n"; };
+    actions['c'] = [](const char *)
+    { config.cooperativeGroupsInsert = true; std::cout << "Cooperative groups insert\n"; };
+    actions['s'] = [](const char *)
+    { config.defaultSearch = true; std::cout << "Default search\n"; };
+    actions['n'] = [](const char *arg)
+    { config.numElements = std::stoul(arg); };
+    actions['l'] = [](const char *arg)
+    { config.load = std::stof(arg); };
+    actions['t'] = [](const char *arg)
+    { config.threads = std::stoul(arg); };
+    actions['b'] = [](const char *arg)
+    { config.blocks = std::stoul(arg); };
+    actions['g'] = [](const char *arg)
+    { config.device = std::stoul(arg); };
 }
 
 int main(int argc, char **argv)
-{   
+{
     // Set CUDA Device - Ensure this is valid for your system
     cudaError_t cudaStatus = cudaSetDevice(config.device);
-    if (cudaStatus != cudaSuccess) {
+    if (cudaStatus != cudaSuccess)
+    {
         std::cerr << "cudaSetDevice failed!" << std::endl;
         return 1;
     }
@@ -174,7 +185,8 @@ int main(int argc, char **argv)
     setupActions();
 
     int opt;
-    while ((opt = getopt(argc, argv, "dcsn:l:t:b:g:")) != -1) {
+    while ((opt = getopt(argc, argv, "dcsn:l:t:b:g:")) != -1)
+    {
         auto action = actions.find(opt);
         if (action != actions.end())
             action->second(optarg);
