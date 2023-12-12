@@ -20,6 +20,7 @@ struct Config
     bool defaultInsert = false;
     bool cooperativeGroupsInsert = false;
     bool defaultSearch = false;
+    bool cooperativeGroupsSearch = false;
     size_t device = 0;
     size_t threads = 1;
     size_t blocks = 1;
@@ -79,11 +80,18 @@ void insertionBenchmarkCGFunc(Hashmap<int, int> *hashmap, const thrust::device_v
 }
 
 template <typename Key, typename Value>
-void getValues(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
+void searchBenchMarkFunc(const Hashmap<int, int> *hashmap, const thrust::device_vector<Key> &keys, thrust::device_vector<Value> &results)
 {
-    int blockSize = 256;
-    int gridSize = (keys.size() + blockSize - 1) / blockSize;
+    int numElements = keys.size();
+    int blockSize = config.threads;
+    int gridSize = config.blocks;
+
+    std::cout << std::setw(25) << "Threads per block:" << blockSize << "\n";
+    std::cout << std::setw(25) << "Number of blocks:" << gridSize << "\n";
+    std::cout << std::setw(25) << "Total number of threads:" << blockSize * gridSize << "\n";
+
     findKernel<<<gridSize, blockSize>>>(hashmap, thrust::raw_pointer_cast(keys.data()), thrust::raw_pointer_cast(results.data()), keys.size());
+    cudaDeviceSynchronize();
 }
 
 void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, const thrust::device_vector<int> &d_values)
@@ -103,20 +111,16 @@ void insertionBenchmarkCGFunc_2(Hashmap<int, int> *hashmap, const thrust::device
     cudaDeviceSynchronize();
 }
 
-void searchBenchMarkFunc(const Hashmap<int, int> *hashmap, const thrust::device_vector<int> &d_keys, thrust::device_vector<int> &d_results)
-{
-    getValues<int, int>(hashmap, d_keys, d_results);
-    cudaDeviceSynchronize();
-}
-
 void setupActions()
 {
-    actions['d'] = [](const char *)
+    actions['i'] = [](const char *)
     { config.defaultInsert = true; std::cout << "Default insert\n"; };
-    actions['c'] = [](const char *)
+    actions['I'] = [](const char *)
     { config.cooperativeGroupsInsert = true; std::cout << "Cooperative groups insert\n"; };
     actions['s'] = [](const char *)
     { config.defaultSearch = true; std::cout << "Default search\n"; };
+    actions['S'] = [](const char *)
+    { config.defaultSearch = true; std::cout << "Cooperative groups search\n"; };
     actions['n'] = [](const char *arg)
     { config.numElements = std::stoul(arg); };
     actions['l'] = [](const char *arg)
@@ -142,7 +146,7 @@ int main(int argc, char **argv)
     setupActions();
 
     int opt;
-    while ((opt = getopt(argc, argv, "dcsn:l:t:b:g:")) != -1)
+    while ((opt = getopt(argc, argv, "iIsSn:l:t:b:g:")) != -1)
     {
         auto action = actions.find(opt);
         if (action != actions.end())
@@ -200,6 +204,19 @@ int main(int argc, char **argv)
     }
 
     if (config.defaultSearch)
+    {
+        thrust::device_vector<int> d_results(d_keys.size());
+        benchmarkKernel([&]()
+                        { searchBenchMarkFunc(hashmap, d_keys, d_results); },
+                        "Search");
+
+        if (!checkResults(d_results, h_values))
+        {
+            // hashmap->printAllBucketValues();
+        }
+    }
+
+    if (config.cooperativeGroupsSearch)
     {
         thrust::device_vector<int> d_results(d_keys.size());
         benchmarkKernel([&]()
