@@ -32,14 +32,13 @@ struct Bucket
     Value value;
     // Other fields or methods for atomic operations
 
-    __device__ Pair<Key, Value> load(std::memory_order order) const
+    __device__ Pair<Key, Value> load() const
     {
         return Pair<Key, Value>(key, value);
     }
 
     __device__ bool compare_exchange_strong(Pair<Key, Value> expected,
-                                            Pair<Key, Value> desired,
-                                            std::memory_order order)
+                                            Pair<Key, Value> desired)
     {
         return atomicCAS(reinterpret_cast<unsigned long long int *>(this),
                          *reinterpret_cast<unsigned long long int *>(&expected),
@@ -117,14 +116,14 @@ __device__ bool Hashmap<Key, Value>::insert(Key k, Value v)
     while (true)
     {
         // load the content of the bucket at the current probe position
-        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        auto old_kv = buckets[i].load();
         // if the bucket is empty we can attempt to insert the pair
         if (old_kv.first == empty_sentinel)
         {
             // try to atomically replace the current content of the bucket with the input pair
             Pair<Key, Value> desired(k, v);
             bool const success = buckets[i].compare_exchange_strong(
-                old_kv, desired, std::memory_order_relaxed);
+                old_kv, desired);
             if (success)
             {
                 // store was successful
@@ -154,7 +153,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<CG_SIZE> group
     while (true)
     {
         // load the contents of the bucket at the current probe position of each rank in a coalesced manner
-        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        auto old_kv = buckets[i].load();
         // input key is already present in the map
         if (group.any(old_kv.first == k))
             return false;
@@ -171,7 +170,7 @@ __device__ bool Hashmap<Key, Value>::insert(cg::thread_block_tile<CG_SIZE> group
                 // attempt atomically swapping the input Pair into the bucket
                 Pair<Key, Value> desired(k, v);
                 bool const success = buckets[i].compare_exchange_strong(
-                    old_kv, desired, std::memory_order_relaxed);
+                    old_kv, desired);
                 if (success)
                 {
                     // printf("inserted key:%d value:%d i: %d\n", k, v, i);
@@ -208,7 +207,7 @@ __device__ Value Hashmap<Key, Value>::find(const Key k) const
     auto i = hash_custom(k) % capacity;
     while (true)
     {
-        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        auto old_kv = buckets[i].load();
         if (old_kv.first == k)
         {
             // Found the key, return the value
@@ -230,7 +229,7 @@ __device__ void Hashmap<Key, Value>::find(cg::thread_block_tile<CG_SIZE> group, 
     auto thread_rank = group.thread_rank();
     while (true)
     {
-        auto old_kv = buckets[i].load(std::memory_order_relaxed);
+        auto old_kv = buckets[i].load();
         auto found_mask = group.ballot(old_kv.first == k);
         if (found_mask)
         {
