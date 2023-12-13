@@ -4,16 +4,16 @@ make clean
 make
 
 # Define arrays for benchmarks
-num_elements=(10000 20000 30000)
+num_elements=(16384 131072 1048576 16777216 67108864)
 load_factors=(0.2 0.4 0.6 0.8 1.0)
-threads_per_block=(32 64 128)
-num_blocks=(500 1000 1500)
+threads_per_block=(32 128 256 512 1024)
+num_blocks=(8 256 2048 8192 16384 65536)
 
 # Test run. Comment out for real benchmark
-num_elements=(10000 20000 )
-load_factors=(0.2 0.4)
-threads_per_block=(32 64 )
-num_blocks=(500 1000 )
+# num_elements=(10000 20000 )
+# load_factors=(0.2 0.4)
+# threads_per_block=(32 64 )
+# num_blocks=(500 1000 )
 
 
 # Output file
@@ -50,8 +50,13 @@ for n in "${num_elements[@]}"; do
     for l in "${load_factors[@]}"; do
         for t in "${threads_per_block[@]}"; do
             for b in "${num_blocks[@]}"; do
-                echo "Running with NumElements=$n, LoadFactor=$l, ThreadsPerBlock=$t, NumBlocks=$b"
-                run_and_extract_time "$n" "$l" "$t" "$b"
+                total_threads=$((t * b))
+                work_per_thread=$((n / total_threads))
+                if [ "$total_threads" -le "$n" ] && [ "$(($n / $total_threads))" -le 2048 ]; then
+                    echo "Running with NumElements=$n, LoadFactor=$l, ThreadsPerBlock=$t, NumBlocks=$b"
+                    run_and_extract_time "$n" "$l" "$t" "$b"
+                else
+                    echo "Skipping configuration where total_threads > num_elements: NumElements=$n, ThreadsPerBlock=$t, NumBlocks=$b"
             done
         done
     done
