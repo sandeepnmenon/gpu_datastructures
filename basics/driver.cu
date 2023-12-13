@@ -208,10 +208,14 @@ int main(int argc, char **argv)
     std::size_t const capacity = std::ceil(config.numElements / config.load);
 
     std::cout << std::left; // Align text to the left
+    std::cout << std::setw(25) << "--------------------"
+              << "\n";
     std::cout << std::setw(25) << "Using device:" << config.device << "\n";
     std::cout << std::setw(25) << "Elements to insert:" << config.numElements << "\n";
     std::cout << std::setw(25) << "Load factor:" << config.load << "\n";
     std::cout << std::setw(25) << "Capacity:" << capacity << "\n";
+    std::cout << std::setw(25) << "--------------------"
+              << "\n";
 
     // Initialize data
     thrust::host_vector<int> h_keys(config.numElements), h_values(config.numElements);
@@ -249,7 +253,7 @@ int main(int argc, char **argv)
         benchmarkKernel([&]()
                         { std::cout << std::setw(25) << "Cooperative group size:" << CG_SIZE << "\n";
                           insertionBenchmarkCGFunc_2(hashmap, d_keys, d_values); },
-                        "Insertion CG");
+                        "CG Insertion");
     }
 
     if (config.defaultSearch)
@@ -257,7 +261,7 @@ int main(int argc, char **argv)
         thrust::device_vector<int> d_results(d_keys.size());
         benchmarkKernel([&]()
                         { searchBenchMarkFunc_2(hashmap, d_keys, d_results); },
-                        "Search");
+                        "non-CG Search");
 
         if (!checkResults(d_results, h_values))
         {
@@ -270,7 +274,7 @@ int main(int argc, char **argv)
         thrust::device_vector<int> d_results(d_keys.size());
         benchmarkKernel([&]()
                         { searchBenchMarkCGFunc_2(hashmap, d_keys, d_results); },
-                        "Search CG");
+                        "CG Search");
 
         if (!checkResults(d_results, h_values))
         {
