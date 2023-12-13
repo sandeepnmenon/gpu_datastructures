@@ -184,14 +184,6 @@ void setupActions()
 
 int main(int argc, char **argv)
 {
-    // Set CUDA Device - Ensure this is valid for your system
-    cudaError_t cudaStatus = cudaSetDevice(config.device);
-    if (cudaStatus != cudaSuccess)
-    {
-        std::cerr << "cudaSetDevice failed!" << std::endl;
-        return 1;
-    }
-
     setupActions();
 
     int opt;
@@ -202,6 +194,14 @@ int main(int argc, char **argv)
             action->second(optarg);
         else
             std::cerr << "Unknown option: " << static_cast<char>(opt) << '\n';
+    }
+
+    // Set CUDA Device - Ensure this is valid for your system
+    cudaError_t cudaStatus = cudaSetDevice(config.device);
+    if (cudaStatus != cudaSuccess)
+    {
+        std::cerr << "cudaSetDevice failed!" << std::endl;
+        return 1;
     }
 
     // Define hashmap capacity

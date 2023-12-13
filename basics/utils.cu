@@ -11,6 +11,14 @@ void initializeData(thrust::host_vector<int> &array, size_t numElements)
     thrust::shuffle(array.begin(), array.end(), gen);
 }
 
+void initializeRandomData(thrust::host_vector<int> &array, size_t numElements)
+{
+    thrust::default_random_engine gen;
+    thrust::uniform_int_distribution<int> dist(0, 10000);
+    for (size_t i = 0; i < numElements; i++)
+        array[i] = dist(gen);
+}
+
 void benchmarkKernel(std::function<void()> kernelFunc, const std::string &kernelName)
 {
     // Start benchmark

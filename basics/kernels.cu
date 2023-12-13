@@ -11,10 +11,7 @@ __global__ void testIntInsertCG(const int *keys, const int *values, const size_t
     if (idx < numElements)
     {
         auto group = cg::tiled_partition<CG_SIZE>(cg::this_thread_block());
-        if (!hashmap->insert(group, keys[idx], values[idx]))
-        {
-            printf("Insertion failed for key[%d] %d\n", idx, keys[idx]);
-        }
+        hashmap->insert(group, keys[idx], values[idx]);
     }
 }
 
@@ -26,10 +23,7 @@ __global__ void testIntInsertCG_2(const int *keys, const int *values, const size
     for (int idx = threadId; idx < numElements; idx += totalThreads)
     {
         auto group = cg::tiled_partition<CG_SIZE>(cg::this_thread_block());
-        if (!hashmap->insert(group, keys[idx], values[idx]))
-        {
-            printf("Insertion failed for key[%d] %d\n", idx, keys[idx]);
-        }
+        hashmap->insert(group, keys[idx], values[idx]);
     }
 }
 
