@@ -11,3 +11,4 @@ driver
 *.csv
 .metals/
 *.png
+*.ipynb
