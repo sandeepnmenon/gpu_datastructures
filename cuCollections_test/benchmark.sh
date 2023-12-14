@@ -20,7 +20,7 @@ run_and_extract_time() {
     local load_factor=$2
     local output
 
-    output=$(./static_map_example "$num_keys" "$load_factor" 2>&1)
+    output=$(./build/insert_find "$num_keys" "$load_factor" 2>&1)
 
     # Use grep and awk to extract timing values
     local insert_time=$(echo "$output" | grep "Insert Time:" | awk '{print $3}')
