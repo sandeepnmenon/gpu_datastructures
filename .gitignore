@@ -10,3 +10,4 @@ build/
 driver
 *.csv
 .metals/
+*.png
