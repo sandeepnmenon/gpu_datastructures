@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # Compile the program
-make clean
-make
+cd build && make && cd ..
 
 # Define arrays for benchmarks
 num_keys_arr=(16384 131072 1048576 16777216 67108864)
