@@ -11,7 +11,7 @@
 #include <cassert>
 
 #include "config.cuh"
-#include "basic_hashmap.cu"
+#include "hashmap_gpu.cu"
 #include "kernels.cuh"
 #include "utils.cuh"
 
@@ -229,7 +229,7 @@ int main(int argc, char **argv)
     thrust::device_vector<int> d_values = h_values;
 
     // Create and initialize hashmap
-    Hashmap<int, int> *hashmap; // Assuming constructor initializes the GPU memory
+    Hashmap<int, int> *hashmap;
     cudaMallocManaged(&hashmap, sizeof(Hashmap<int, int>));
     new (hashmap) Hashmap<int, int>(capacity);
     cudaError_t err = cudaGetLastError();

@@ -1,6 +1,6 @@
 # Variables
 EXECUTABLE = driver
-SOURCE = driver.cu basic_hashmap.cu kernels.cu utils.cu 
+SOURCE = driver.cu hashmap_gpu.cu kernels.cu utils.cu 
 FLAGS = -I. -O1
 NVCC = nvcc
 

@@ -1,7 +1,7 @@
 #ifndef KERNELS_CUH_
 #define KERNELS_CUH_
 
-#include "basic_hashmap.cu"
+#include "hashmap_gpu.cu"
 
 // Declare the kernel functions
 __global__ void testIntInsertCG(const int *keys, const int *values, const size_t numElements, Hashmap<int, int> *hashmap);
