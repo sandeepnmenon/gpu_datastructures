@@ -1,4 +1,4 @@
-#include "basic_hashmap.cu"
+#include "hashmap_gpu.cu"
 #include "kernels.cuh"
 #include "config.cuh"
 #include <cooperative_groups.h>
