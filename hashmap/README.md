@@ -27,6 +27,8 @@ public:
 ```
 Example usage
 ```cpp
+#include "hashmap_gpu.cu"   // Include the hashmap header file
+
 Hashmap<int, int> *hashmap; // Integer to Integer hashmap
 cudaMallocManaged(&hashmap, sizeof(Hashmap<int, int>));
 new (hashmap) Hashmap<int, int>(capacity);
