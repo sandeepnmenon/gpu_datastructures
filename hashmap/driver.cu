@@ -23,9 +23,9 @@ struct Config
     bool defaultSearch = false;
     bool cooperativeGroupsSearch = false;
     size_t device = 0;
-    size_t threads = 1;
-    size_t blocks = 1;
-    size_t numElements = 1;
+    size_t threads = 512;
+    size_t blocks = 1024;
+    size_t numElements = 100000;
     float load = 1.0f;
 
 } config;
